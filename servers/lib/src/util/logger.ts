@@ -3,7 +3,7 @@ import { IConsoleLogger } from "./Interfaces/IConsoleLogger";
 import { ColorUtility } from "./ColorUtility.js";
 //=removed=
 //Ensure the ConsoleLogger class is properly set up as a NestJS service.
-const LINE_LENGTH: number = 50;
+const LINE_LENGTH: number = 90;
 const INDENT_SPACES: string = "              "; //14 spaces
 
 @Injectable()
@@ -11,13 +11,13 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
     // constructor() { super(); }
 
     ErrorMsg(message: string, maxLineLength: number = LINE_LENGTH): void {
-        this.printWrappedMessage(message, maxLineLength, ColorUtility.FG_RED, "∙X∙ ERR ∙X∙:");
+        this.printWrappedMessage(message, maxLineLength, ColorUtility.FG_RED, "• ERR •");
     }
     WarningMsg(message: string, maxLineLength: number = LINE_LENGTH): void {
-        this.printWrappedMessage(message, maxLineLength, ColorUtility.FG_YELLOW, "/// WRN ///:");
+        this.printWrappedMessage(message, maxLineLength, ColorUtility.FG_YELLOW, "//WRN//");
     }
     LogMsg(message: string, maxLineLength: number = LINE_LENGTH): void {
-        this.printWrappedMessage(message, maxLineLength, ColorUtility.FG_BLUE, "██▀ MSG ▄█▐:");
+        this.printWrappedMessage(message, maxLineLength, ColorUtility.FG_BLACK, "  MSG  ");
     }
 
     private printWrappedMessage(
@@ -26,9 +26,10 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
         ColorChar: string,
         MSG_SYMBOLD: string,
     ): void {
+        const timestamp = new Date().toISOString();
         const words = message.split(" ");
         let currentLine = "";
-        let output = ColorChar + MSG_SYMBOLD + " ";
+        let output = `${ColorChar}${MSG_SYMBOLD} ${timestamp} ${MSG_SYMBOLD} ` + " ";
 
         for (const word of words) {
             if ((currentLine + word).length > maxLineLength) {

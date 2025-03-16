@@ -1,20 +1,22 @@
 import { execSync } from 'child_process';
 import Config from '../config/config.service.js';
 import { IConfig } from '../config/config.interface.js';
-import { GitRepo } from '../config/config.model.js';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { ConsoleLogger } from './logger.js';
 
 class AutoSync {
-    private readonly dataPath: string;
+    private readonly projectPath: string;
     private readonly configService: IConfig;
     private readonly logger: ConsoleLogger;
 
     constructor(configService: IConfig) {
         this.configService = configService;
-        this.dataPath = this.configService.getLocalPath();
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        this.projectPath = path.resolve(__dirname, '../../../../../'); // Adjust the path to point to the root of the current project
         this.logger = new ConsoleLogger();
-        this.logger.LogMsg(`Data path set to: ${this.dataPath}`);
+        this.logger.LogMsg(`Project path set to: ${this.projectPath}`);
     }
 
     private runCommand(command: string, cwd: string): string | null {
@@ -60,13 +62,7 @@ class AutoSync {
 
     private async syncAllRepos(): Promise<void> {
         this.logger.LogMsg('Starting sync for all repositories...');
-        const userRepoConfigs: { [key: string]: GitRepo }[] = this.configService.getGitRepos();
-        for (const repoConf of userRepoConfigs) {
-            const user = Object.keys(repoConf)[0];
-            const repoPath = path.join(this.dataPath, user);
-            this.logger.LogMsg(`Syncing repository for user: ${user}`);
-            await this.autoSync(repoPath);
-        }
+        await this.autoSync(this.projectPath);
         this.logger.LogMsg('All repositories synced.');
     }
 
@@ -84,7 +80,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const configService = new Config(); // Assuming you have a way to instantiate ConfigService
     configService.loadConfig('c:/Education/Bachelor/BachelorWorkRepo/DTaaS/servers/lib/config/libms.dev.yaml').then(() => {
         const autoSync = new AutoSync(configService);
-        autoSync.scheduleAutoSync(5); // Schedule every 5 seconds for testing
+        autoSync.scheduleAutoSync(5); // Schedule every 15 seconds for testing
     }).catch((err) => {
         console.error('Failed to load configuration:', err);
     });
