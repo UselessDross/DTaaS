@@ -3,72 +3,75 @@ import Config from '../config/config.service.js';
 import { IConfig } from '../config/config.interface.js';
 import { GitRepo } from '../config/config.model.js';
 import * as path from 'path';
+import { ConsoleLogger } from './logger.js';
 
 class AutoSync {
     private readonly dataPath: string;
     private readonly configService: IConfig;
+    private readonly logger: ConsoleLogger;
 
     constructor(configService: IConfig) {
         this.configService = configService;
         this.dataPath = this.configService.getLocalPath();
-        console.log(`Data path set to: ${this.dataPath}`);
+        this.logger = new ConsoleLogger();
+        this.logger.LogMsg(`Data path set to: ${this.dataPath}`);
     }
 
     private runCommand(command: string, cwd: string): string | null {
-        console.log(`Running command: "${command}" in directory: ${cwd}`);
+        this.logger.LogMsg(`Running command: "${command}" in directory: ${cwd}`);
         try {
             const output = execSync(command, { cwd, stdio: 'pipe' });
-            console.log(`Command output: ${output.toString().trim()}`);
+            this.logger.LogMsg(`Command output: ${output.toString().trim()}`);
             return output.toString().trim();
         } catch (error) {
-            console.error(`Error running command: "${command}" in ${cwd}`);
-            console.error(error instanceof Error ? error.message : error);
+            this.logger.ErrorMsg(`Error running command: "${command}" in ${cwd}`);
+            this.logger.ErrorMsg(error instanceof Error ? error.message : error);
             return null;
         }
     }
 
     private async autoSync(repoPath: string): Promise<void> {
-        console.log(`Starting auto sync process for repository at: ${repoPath}`);
+        this.logger.LogMsg(`Starting auto sync process for repository at: ${repoPath}`);
 
         // 1. Pull from remote
-        console.log('Pulling latest changes...');
+        this.logger.LogMsg('Pulling latest changes...');
         const pullResult = this.runCommand('git pull', repoPath);
         if (pullResult === null) return; // means pull failed
 
         // 2. Check if local changes exist
-        console.log('Checking for changes...');
+        this.logger.LogMsg('Checking for changes...');
         const status = this.runCommand('git status --porcelain', repoPath);
         if (!status) {
-            console.log('No local changes to commit.');
+            this.logger.LogMsg('No local changes to commit.');
             return;
         }
 
         // 3. Commit & push
-        console.log('Adding changes...');
+        this.logger.LogMsg('Adding changes...');
         this.runCommand('git add .', repoPath);
         const timestamp = new Date().toISOString();
-        console.log(`Committing changes with message: "Auto commit at ${timestamp}"`);
+        this.logger.LogMsg(`Committing changes with message: "Auto commit at ${timestamp}"`);
         this.runCommand(`git commit -m "Auto commit at ${timestamp}"`, repoPath);
-        console.log('Pushing changes...');
+        this.logger.LogMsg('Pushing changes...');
         this.runCommand('git push', repoPath);
 
-        console.log('Auto sync completed successfully.');
+        this.logger.LogMsg('Auto sync completed successfully.');
     }
 
     private async syncAllRepos(): Promise<void> {
-        console.log('Starting sync for all repositories...');
+        this.logger.LogMsg('Starting sync for all repositories...');
         const userRepoConfigs: { [key: string]: GitRepo }[] = this.configService.getGitRepos();
         for (const repoConf of userRepoConfigs) {
             const user = Object.keys(repoConf)[0];
             const repoPath = path.join(this.dataPath, user);
-            console.log(`Syncing repository for user: ${user}`);
+            this.logger.LogMsg(`Syncing repository for user: ${user}`);
             await this.autoSync(repoPath);
         }
-        console.log('All repositories synced.');
+        this.logger.LogMsg('All repositories synced.');
     }
 
     public scheduleAutoSync(intervalSeconds: number): void {
-        console.log(`Scheduling auto sync every ${intervalSeconds} seconds.`);
+        this.logger.LogMsg(`Scheduling auto sync every ${intervalSeconds} seconds.`);
         // Immediately run once
         this.syncAllRepos();
         // Then schedule repeating

@@ -41,7 +41,7 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
         // Append any remaining text.
         output += currentLine.trim();
 
-        console.log(output);
-        console.log(ColorUtility.RESET);
+
+        console.log(output + ColorUtility.RESET);
     }
 }
