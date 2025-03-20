@@ -1,48 +1,68 @@
-import { execSync } from 'child_process';
-import Config from '../config/config.service.js';
-import { IConfig } from '../config/config.interface.js';
+// src/util/autoSync.ts
+
+import * as cp from 'child_process'; // Import entire child_process as cp
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { ConsoleLogger } from './logger.js';
 
 class AutoSync {
-    private readonly projectPath: string;
-    private readonly configService: IConfig;
+    private repoPath: string | null = null;
     private readonly logger: ConsoleLogger;
 
-    constructor(configService: IConfig) {
-        this.configService = configService;
+    constructor() {
         const __filename = fileURLToPath(import.meta.url);
         const __dirname = path.dirname(__filename);
-        this.projectPath = path.resolve(__dirname, '../../../../../'); // Adjust the path to point to the root of the current project
+        this.repoPath = path.join(__dirname, '../../../../../');
+
         this.logger = new ConsoleLogger();
-        this.logger.LogMsg(`Project path set to: ${this.projectPath}`);
+        this.logger.LogMsg('AutoSync initialized.');
     }
+    /**
+     * Set the repository path to be auto-synced.
+     * @param repoPath The absolute path to the repository.
+     */
+    public setRepository(repoPath: string): void {
+        this.repoPath = repoPath;
+        this.logger.LogMsg(`Repository path set to: ${repoPath}`);
+    }
+
+    public GetCurrentRepository(): string { return this.repoPath; }
 
     private runCommand(command: string, cwd: string): string | null {
         this.logger.LogMsg(`Running command: "${command}" in directory: ${cwd}`);
         try {
-            const output = execSync(command, { cwd, stdio: 'pipe' });
-            this.logger.LogMsg(`Command output: ${output.toString().trim()}`);
-            return output.toString().trim();
+            const output = cp.execSync(command, { cwd, stdio: 'pipe' });
+            const outStr = output.toString().trim();
+            this.logger.LogMsg(`Command output: ${outStr}`);
+            return outStr;
         } catch (error) {
             this.logger.ErrorMsg(`Error running command: "${command}" in ${cwd}`);
-            this.logger.ErrorMsg(error instanceof Error ? error.message : error);
+            this.logger.ErrorMsg(error instanceof Error ? error.message : String(error));
             return null;
         }
     }
+    private async autoSync(): Promise<void> {
+        if (!this.repoPath) {
+            this.logger.ErrorMsg('No repository set. Use setRepository() first.');
+            return;
+        }
 
-    private async autoSync(repoPath: string): Promise<void> {
-        this.logger.LogMsg(`Starting auto sync process for repository at: ${repoPath}`);
+        this.logger.LogMsg(`Starting auto sync process for repository at: ${this.repoPath}`);
+        try {
+            this.runCommand('git remote -v', this.repoPath);
+            this.runCommand('git branch --set-upstream-to=origin/main main', this.repoPath);
+        } catch (err) {
+            console.log('Error setting upstream:', err.message);
+        }
 
         // 1. Pull from remote
         this.logger.LogMsg('Pulling latest changes...');
-        const pullResult = this.runCommand('git pull', repoPath);
-        if (pullResult === null) return; // means pull failed
+        const pullResult = this.runCommand('git pull', this.repoPath);
+        if (pullResult === null) return;
 
         // 2. Check if local changes exist
         this.logger.LogMsg('Checking for changes...');
-        const status = this.runCommand('git status --porcelain', repoPath);
+        const status = this.runCommand('git status --porcelain', this.repoPath);
         if (!status) {
             this.logger.LogMsg('No local changes to commit.');
             return;
@@ -50,40 +70,32 @@ class AutoSync {
 
         // 3. Commit & push
         this.logger.LogMsg('Adding changes...');
-        this.runCommand('git add .', repoPath);
+        this.runCommand('git add .', this.repoPath);
+
         const timestamp = new Date().toISOString();
         this.logger.LogMsg(`Committing changes with message: "Auto commit at ${timestamp}"`);
-        this.runCommand(`git commit -m "Auto commit at ${timestamp}"`, repoPath);
+        this.runCommand(`git commit -m "Auto commit at ${timestamp}"`, this.repoPath);
+
         this.logger.LogMsg('Pushing changes...');
-        this.runCommand('git push', repoPath);
+        this.runCommand('git push', this.repoPath);
 
         this.logger.LogMsg('Auto sync completed successfully.');
     }
-
-    private async syncAllRepos(): Promise<void> {
-        this.logger.LogMsg('Starting sync for all repositories...');
-        await this.autoSync(this.projectPath);
-        this.logger.LogMsg('All repositories synced.');
-    }
+    public async syncRepository(): Promise<void> { await this.autoSync(); }
 
     public scheduleAutoSync(intervalSeconds: number): void {
-        this.logger.LogMsg(`Scheduling auto sync every ${intervalSeconds} seconds.`);
-        // Immediately run once
-        this.syncAllRepos();
-        // Then schedule repeating
-        setInterval(() => this.syncAllRepos(), intervalSeconds * 1000);
-    }
-}
+        if (!this.repoPath) {
+            this.logger.ErrorMsg('No repository set. Use setRepository() first.');
+            return;
+        }
 
-// If you want to run it directly with: `yarn start`
-if (import.meta.url === `file://${process.argv[1]}`) {
-    const configService = new Config(); // Assuming you have a way to instantiate ConfigService
-    configService.loadConfig('c:/Education/Bachelor/BachelorWorkRepo/DTaaS/servers/lib/config/libms.dev.yaml').then(() => {
-        const autoSync = new AutoSync(configService);
-        autoSync.scheduleAutoSync(5); // Schedule every 15 seconds for testing
-    }).catch((err) => {
-        console.error('Failed to load configuration:', err);
-    });
+        this.logger.LogMsg(`Scheduling auto sync every ${intervalSeconds} seconds.`);
+        setInterval(async () => {
+            await this.autoSync();
+        }, intervalSeconds * 1000);
+    }
+
+
 }
 
 export { AutoSync };

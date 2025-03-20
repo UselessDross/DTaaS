@@ -32,7 +32,7 @@ export default async function bootstrap(options?: BootstrapOptions) {
   }
 
   // Start the auto-sync process
-  const autoSync = new AutoSync(configService);
+  const autoSync = new AutoSync();
   autoSync.scheduleAutoSync(15); // Schedule every 15 minutes
 
   await app.listen(port);
