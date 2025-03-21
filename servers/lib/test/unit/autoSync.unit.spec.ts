@@ -1,15 +1,7 @@
 import { jest } from '@jest/globals';
-import { AutoSyncService } from '../../src/auto-sync/auto-sync.service.js';
-
 jest.mock('child_process', () => ({
     execSync: jest.fn(),
 }));
-
-const { ConsoleLogger } = await import('../../src/util/logger.js');
-// Instead of importing cp with "import * as cp", require the mocked module:
-const cpMock = jest.requireMock('child_process') as { execSync: jest.Mock };
-const mockExecSync = cpMock.execSync;
-
 jest.mock('../../src/util/logger', () => {
     return {
         ConsoleLogger: jest.fn().mockImplementation(() => ({
@@ -18,6 +10,13 @@ jest.mock('../../src/util/logger', () => {
         })),
     };
 });
+
+import { AutoSyncService } from '../../src/auto-sync/auto-sync.service.js';
+
+const { ConsoleLogger } = await import('../../src/util/logger.js');
+// Instead of importing cp with "import * as cp", require the mocked module:
+const cpMock = jest.requireMock('child_process') as { execSync: jest.Mock };
+const mockExecSync = cpMock.execSync;
 
 describe('AutoSyncService', () => {
     let autoSyncService: AutoSyncService;
