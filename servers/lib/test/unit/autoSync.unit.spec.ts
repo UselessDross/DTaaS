@@ -1,8 +1,6 @@
 import { jest } from '@jest/globals';
+await jest.unstable_mockModule('child_process', () => ({ execSync: jest.fn() }));
 
-jest.mock('child_process', () => ({
-    execSync: jest.fn(),
-}));
 jest.mock('../../src/util/logger', () => {
     return {
         ConsoleLogger: jest.fn().mockImplementation(() => ({
@@ -12,8 +10,8 @@ jest.mock('../../src/util/logger', () => {
     };
 });
 
-const cpMock = jest.requireMock('child_process') as { execSync: jest.Mock };
-let mockExecSync = cpMock.execSync;
+import * as cpModule from 'child_process';
+let mockExecSync = cpModule.execSync as jest.Mock;
 
 let autoSyncService: any; // will be assigned after module import
 
@@ -21,9 +19,8 @@ describe('AutoSyncService', () => {
 
     beforeEach(async () => {
         jest.resetModules();
-        // Re-import child_process using requireMock so that our mock functions are preserved
-        const cpModule = jest.requireMock('child_process') as { execSync: jest.Mock };
-        mockExecSync = cpModule.execSync;
+        const cpModule = await import('child_process');
+        mockExecSync = cpModule.execSync as jest.Mock;
         const autoSyncModule = await import('../../src/auto-sync/auto-sync.service.js');
         autoSyncService = new autoSyncModule.AutoSyncService(new (await import('../../src/util/logger.js')).ConsoleLogger());
         jest.clearAllMocks();
@@ -95,21 +92,13 @@ describe('AutoSyncService', () => {
         const repoPath = autoSyncService.getCurrentRepository();
         const logMsgSpy = jest.spyOn((await import('../../src/util/logger.js')).ConsoleLogger.prototype, 'LogMsg');
         mockExecSync.mockImplementation((command: string): any => {
-            if (command.includes('git remote -v')) {
-                return Buffer.from('');
-            } else if (command.includes('git branch --set-upstream-to=origin/main main')) {
-                return Buffer.from('');
-            } else if (command.includes('git pull')) {
-                return Buffer.from('Pulled successfully');
-            } else if (command.includes('git status --porcelain')) {
-                return Buffer.from('M newFile.txt');
-            } else if (command.includes('git add .')) {
-                return Buffer.from('');
-            } else if (command.includes('git commit -m')) {
-                return Buffer.from('');
-            } else if (command.includes('git push')) {
-                return Buffer.from('');
-            }
+            if (command.includes('git remote -v')) { return Buffer.from(''); }
+            else if (command.includes('git branch --set-upstream-to=origin/main main')) { return Buffer.from(''); }
+            else if (command.includes('git pull')) { return Buffer.from('Pulled successfully'); }
+            else if (command.includes('git status --porcelain')) { return Buffer.from('M newFile.txt'); }
+            else if (command.includes('git add .')) { return Buffer.from(''); }
+            else if (command.includes('git commit -m')) { return Buffer.from(''); }
+            else if (command.includes('git push')) { return Buffer.from(''); }
             return Buffer.from('');
         });
         await autoSyncService.syncRepository();
