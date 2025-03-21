@@ -13,7 +13,7 @@ jest.mock('../../src/util/logger', () => {
 });
 
 const cpMock = jest.requireMock('child_process') as { execSync: jest.Mock };
-const mockExecSync = cpMock.execSync;
+let mockExecSync = cpMock.execSync;
 
 let autoSyncService: any; // will be assigned after module import
 
@@ -21,7 +21,9 @@ describe('AutoSyncService', () => {
 
     beforeEach(async () => {
         jest.resetModules();
-        // re-import modules so mocks are applied
+        // Re-import child_process using requireMock so that our mock functions are preserved
+        const cpModule = jest.requireMock('child_process') as { execSync: jest.Mock };
+        mockExecSync = cpModule.execSync;
         const autoSyncModule = await import('../../src/auto-sync/auto-sync.service.js');
         autoSyncService = new autoSyncModule.AutoSyncService(new (await import('../../src/util/logger.js')).ConsoleLogger());
         jest.clearAllMocks();
