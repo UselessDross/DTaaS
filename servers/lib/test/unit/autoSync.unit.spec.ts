@@ -1,21 +1,18 @@
 import { jest } from '@jest/globals';
 import { fileURLToPath } from 'url';
 import * as path from 'path';
+// Updated import for the NestJS-style AutoSyncService:
+import { AutoSyncService } from '../../src/auto-sync/auto-sync.service.js';
 
-// Instead of static import, do dynamic import after mocking:
+// Instead of statically mocking child_process in the previous util file,
+// you may continue to mock it here as before:
 jest.unstable_mockModule('child_process', () => ({ execSync: jest.fn(), }));
 
-// Dynamically import the custom ConsoleLogger (to have the updated mock) 
 const { ConsoleLogger } = await import('../../src/util/logger.js');
-
-// Dynamically import AutoSync after mocks are set up.
-const { AutoSync } = await import('../../src/util/autoSync.js');
-
-// Obtain child_process mock from the module registry.
+// Obtain child_process mock from module registry:
 const childProcMock = (await import('child_process')).execSync as jest.Mock;
 const mockExecSync = childProcMock;
 
-// Mocking logger so we can spy on its LogMsg and ErrorMsg methods.
 jest.mock('../../src/util/logger', () => {
     return {
         ConsoleLogger: jest.fn().mockImplementation(() => ({
@@ -25,41 +22,35 @@ jest.mock('../../src/util/logger', () => {
     };
 });
 
-describe('AutoSync', () => {
-    // Declare a variable to hold the AutoSync instance.
-    let autoSync: InstanceType<typeof AutoSync>;
+describe('AutoSyncService', () => {
+    let autoSyncService: AutoSyncService;
 
     beforeEach(() => {
-        // Clear mocks and instantiate a new AutoSync before each test.
         jest.clearAllMocks();
-        autoSync = new AutoSync();
+        // Instantiate the service with a new ConsoleLogger instance:
+        autoSyncService = new AutoSyncService(new ConsoleLogger());
     });
 
     afterEach(() => {
-        // Clear timers and mocks after each test.
         jest.clearAllTimers();
         jest.clearAllMocks();
     });
 
     it('1 - should initialize with correct project path', () => {
-        // Calculate expected repo path based on the location of this test file.
+        // Calculate expected repo path based on location of this test file.
         const __filename = fileURLToPath(import.meta.url);
         const __dirname = path.dirname(__filename);
         const expectedPath = path.resolve(__dirname, '../../../../..').replace(/[\\\/]+$/, '');
-        expect(autoSync['repoPath'].replace(/[\\\/]+$/, '')).toBe(expectedPath);  // Check that the AutoSync instance's repoPath (private) matches the expected path.
+        expect(autoSyncService.getCurrentRepository().replace(/[\\\/]+$/, '')).toBe(expectedPath);
     });
-
-
 
     it('2 - should log the project path on initialization', () => {
-        // Spy on the logger's LogMsg method to capture log calls.
         const logSpy = jest.spyOn(ConsoleLogger.prototype, 'LogMsg');
-        autoSync = new AutoSync();                                                              // Create a new AutoSync instance
-        autoSync.setRepository(autoSync['repoPath']);                                           // Set the repository path using the instance's existing repoPath property.
-        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Repository path set to:'));// Verify that LogMsg was called with a message indicating the repository path was set.
+        // Reinitialize service to trigger log on constructor and setRepository:
+        autoSyncService = new AutoSyncService(new ConsoleLogger());
+        autoSyncService.setRepository(autoSyncService.getCurrentRepository());
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Repository path set to:'));
     });
-
-
 
     it('3 - should run a command successfully', () => {
         // Set up test command and working directory.
@@ -68,14 +59,12 @@ describe('AutoSync', () => {
         const output = 'On branch main';
         mockExecSync.mockReturnValue(Buffer.from(output));                                 // Mock the execSync response to simulate successful command execution.
         const logMsgSpy = jest.spyOn(ConsoleLogger.prototype, 'LogMsg');                   // Spy on LogMsg to verify logging output.
-        const result = autoSync['runCommand'](command, cwd);                               // Call the private runCommand method via bracket notation.
+        const result = autoSyncService['runCommand'](command, cwd);                               // Call the private runCommand method via bracket notation.
         expect(mockExecSync).toHaveBeenCalledWith(command, { cwd, stdio: 'pipe' });        // Verify that execSync was called with proper arguments.
         expect(result).toBe(output.trim());                                                // Check that the returned result matches the trimmed output.
         expect(logMsgSpy).toHaveBeenCalledWith(expect.stringContaining(`Running command: "${command}" in directory: ${cwd}`));// Verify that the LogMsg was used to log the command execution and output.
         expect(logMsgSpy).toHaveBeenCalledWith(expect.stringContaining(`Command output: ${output}`));
     });
-
-
 
     it('4 - should handle command execution error', () => {
         // Prepare test command and cwd to simulate error execution.
@@ -84,32 +73,26 @@ describe('AutoSync', () => {
         const error = new Error('Command failed');
         mockExecSync.mockImplementation(() => { throw error; });                    // Mock execSync so that it throws an error.
         const errorMsgSpy = jest.spyOn(ConsoleLogger.prototype, 'ErrorMsg');        // Spy on ErrorMsg to verify error logging.
-        const result = autoSync['runCommand'](command, cwd);                        // Execute the command.
+        const result = autoSyncService['runCommand'](command, cwd);                        // Execute the command.
         expect(mockExecSync).toHaveBeenCalledWith(command, { cwd, stdio: 'pipe' }); // Validate that execSync was called correctly.
         expect(result).toBeNull();                                                  // Since an error is thrown, result should be null.
         expect(errorMsgSpy).toHaveBeenCalledWith(expect.stringContaining(`Error running command: "${command}" in ${cwd}`));     // Verify the error messages were logged.
         expect(errorMsgSpy).toHaveBeenCalledWith(error.message);
     });
 
-
-
-
     it('5 - should sync all repositories successfully', async () => {
-        jest.spyOn(autoSync as any, 'autoSync').mockResolvedValue(Promise.resolve()); // Spy on the private autoSync method and simulate a resolved promise.
-        await autoSync['syncRepository']();                                           // Call the syncRepository method.
-        expect((autoSync as any)['autoSync']).toHaveBeenCalled();                     // Check that the private autoSync method was indeed called.
+        jest.spyOn(autoSyncService as any, 'autoSync').mockResolvedValue(Promise.resolve()); // Spy on the private autoSync method and simulate a resolved promise.
+        await autoSyncService['syncRepository']();                                           // Call the syncRepository method.
+        expect((autoSyncService as any)['autoSync']).toHaveBeenCalled();                     // Check that the private autoSync method was indeed called.
     });
-
-
-
 
     it('6 - should schedule auto sync at specified interval', async () => {
 
         jest.useFakeTimers();                                                                             // Configure fake timers for scheduling tests.
-        const autoSyncSpy = jest.spyOn(autoSync as any, 'autoSync').mockResolvedValue(Promise.resolve()); // Spy on the private autoSync method (which is scheduled).
+        const autoSyncSpy = jest.spyOn(autoSyncService as any, 'autoSync').mockResolvedValue(Promise.resolve()); // Spy on the private autoSync method (which is scheduled).
         const logMsgSpy = jest.spyOn(ConsoleLogger.prototype, 'LogMsg');                                  // Spy on logger to capture schedule message.
         const setIntervalSpy = jest.spyOn(global, 'setInterval');                                         // Spy on setInterval to capture scheduling callback.
-        autoSync.scheduleAutoSync(1);                                                                     // Schedule auto sync every 1 second.
+        autoSyncService.scheduleAutoSync(1);                                                                     // Schedule auto sync every 1 second.
         expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 1000);                          // Verify that setInterval is called with the correct delay.
         const scheduledFn = setIntervalSpy.mock.calls[0][0];                                              // Capture the scheduled function callback.
         await scheduledFn();                                                                              // Manually invoke the scheduled callback.
@@ -117,12 +100,9 @@ describe('AutoSync', () => {
         expect(logMsgSpy).toHaveBeenCalledWith(expect.stringContaining('Scheduling auto sync every 1 seconds.'));     // Verify that a log message for scheduling was produced.
     }, 5000);
 
-
-
-
     it('7 - should handle upstream branch setup and pull', async () => {
         // Retrieve the repository path for validation.
-        const repoPath = autoSync['repoPath'];
+        const repoPath = autoSyncService.getCurrentRepository();
         // Spy on logger to capture messages.
         const logMsgSpy = jest.spyOn(ConsoleLogger.prototype, 'LogMsg');
         // Mock execSync implementation to simulate sequence of git commands:
@@ -137,7 +117,7 @@ describe('AutoSync', () => {
             return Buffer.from('');
         });
         // Execute syncRepository to simulate complete auto sync process.
-        await autoSync.syncRepository();
+        await autoSyncService.syncRepository();
         // Verify each git command was executed with expected parameters.
         expect(mockExecSync).toHaveBeenCalledWith('git remote -v', { cwd: repoPath, stdio: 'pipe' });
         expect(mockExecSync).toHaveBeenCalledWith('git branch --set-upstream-to=origin/main main', { cwd: repoPath, stdio: 'pipe' });
@@ -150,13 +130,10 @@ describe('AutoSync', () => {
         expect(logMsgSpy).toHaveBeenCalledWith(expect.stringContaining('Starting auto sync process for repository at:'));
     });
 
-
-
-
     it('8 - should correctly set and return repository path', () => {
-        const expectedRepoPath = '/custom/repo/path';       // Define a custom repository path.
-        autoSync.setRepository(expectedRepoPath);           // Use setRepository to update the repoPath.
-        const currentRepo = autoSync.GetCurrentRepository();// Call GetCurrentRepository to get the current repo path.
-        expect(currentRepo).toBe(expectedRepoPath);         // Validate that it matches the expected value.
+        const expectedRepoPath = '/custom/repo/path';
+        autoSyncService.setRepository(expectedRepoPath);
+        const currentRepo = autoSyncService.getCurrentRepository();
+        expect(currentRepo).toBe(expectedRepoPath);
     });
 });
