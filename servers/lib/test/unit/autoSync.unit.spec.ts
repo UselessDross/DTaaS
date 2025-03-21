@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+
 jest.mock('child_process', () => ({
     execSync: jest.fn(),
 }));
@@ -11,19 +12,19 @@ jest.mock('../../src/util/logger', () => {
     };
 });
 
-import { AutoSyncService } from '../../src/auto-sync/auto-sync.service.js';
-
-const { ConsoleLogger } = await import('../../src/util/logger.js');
-// Instead of importing cp with "import * as cp", require the mocked module:
 const cpMock = jest.requireMock('child_process') as { execSync: jest.Mock };
 const mockExecSync = cpMock.execSync;
 
-describe('AutoSyncService', () => {
-    let autoSyncService: AutoSyncService;
+let autoSyncService: any; // will be assigned after module import
 
-    beforeEach(() => {
+describe('AutoSyncService', () => {
+
+    beforeEach(async () => {
+        jest.resetModules();
+        // re-import modules so mocks are applied
+        const autoSyncModule = await import('../../src/auto-sync/auto-sync.service.js');
+        autoSyncService = new autoSyncModule.AutoSyncService(new (await import('../../src/util/logger.js')).ConsoleLogger());
         jest.clearAllMocks();
-        autoSyncService = new AutoSyncService(new ConsoleLogger());
     });
 
     afterEach(() => {
@@ -32,25 +33,23 @@ describe('AutoSyncService', () => {
     });
 
     it('1 - should initialize with correct project path', () => {
-        // Instead of computing an external expected value,
-        // we now compare against the service’s own repository path.
         const expectedPath = autoSyncService.getCurrentRepository();
         expect(autoSyncService.getCurrentRepository()).toBe(expectedPath);
     });
 
-    it('2 - should log the project path on initialization', () => {
-        const logSpy = jest.spyOn(ConsoleLogger.prototype, 'LogMsg');
-        autoSyncService = new AutoSyncService(new ConsoleLogger());
+    it('2 - should log the project path on initialization', async () => {
+        const logSpy = jest.spyOn((await import('../../src/util/logger.js')).ConsoleLogger.prototype, 'LogMsg');
+        autoSyncService = new (await import('../../src/auto-sync/auto-sync.service.js')).AutoSyncService(new (await import('../../src/util/logger.js')).ConsoleLogger());
         autoSyncService.setRepository(autoSyncService.getCurrentRepository());
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Repository path set to:'));
     });
 
-    it('3 - should run a command successfully', () => {
+    it('3 - should run a command successfully', async () => {
         const command = 'git status';
         const cwd = '/path/to/repo';
         const output = 'On branch main';
-        mockExecSync.mockReturnValue(Buffer.from(output)); // Simulate success.
-        const logMsgSpy = jest.spyOn(ConsoleLogger.prototype, 'LogMsg');
+        mockExecSync.mockReturnValue(Buffer.from(output));
+        const logMsgSpy = jest.spyOn((await import('../../src/util/logger.js')).ConsoleLogger.prototype, 'LogMsg');
         const result = autoSyncService['runCommand'](command, cwd);
         expect(mockExecSync).toHaveBeenCalledWith(command, { cwd, stdio: 'pipe' });
         expect(result).toBe(output.trim());
@@ -58,12 +57,12 @@ describe('AutoSyncService', () => {
         expect(logMsgSpy).toHaveBeenCalledWith(expect.stringContaining(`Command output: ${output}`));
     });
 
-    it('4 - should handle command execution error', () => {
+    it('4 - should handle command execution error', async () => {
         const command = 'git status';
         const cwd = '/path/to/repo';
         const error = new Error('Command failed');
         mockExecSync.mockImplementation(() => { throw error; });
-        const errorMsgSpy = jest.spyOn(ConsoleLogger.prototype, 'ErrorMsg');
+        const errorMsgSpy = jest.spyOn((await import('../../src/util/logger.js')).ConsoleLogger.prototype, 'ErrorMsg');
         const result = autoSyncService['runCommand'](command, cwd);
         expect(mockExecSync).toHaveBeenCalledWith(command, { cwd, stdio: 'pipe' });
         expect(result).toBeNull();
@@ -80,7 +79,7 @@ describe('AutoSyncService', () => {
     it('6 - should schedule auto sync at specified interval', async () => {
         jest.useFakeTimers();
         const autoSyncSpy = jest.spyOn(autoSyncService as any, 'autoSync').mockResolvedValue(Promise.resolve());
-        const logMsgSpy = jest.spyOn(ConsoleLogger.prototype, 'LogMsg');
+        const logMsgSpy = jest.spyOn((await import('../../src/util/logger.js')).ConsoleLogger.prototype, 'LogMsg');
         const setIntervalSpy = jest.spyOn(global, 'setInterval');
         autoSyncService.scheduleAutoSync(1);
         expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 1000);
@@ -92,13 +91,12 @@ describe('AutoSyncService', () => {
 
     it('7 - should handle upstream branch setup and pull', async () => {
         const repoPath = autoSyncService.getCurrentRepository();
-        const logMsgSpy = jest.spyOn(ConsoleLogger.prototype, 'LogMsg');
-        // Update the mock to simulate all git commands succeeding.
+        const logMsgSpy = jest.spyOn((await import('../../src/util/logger.js')).ConsoleLogger.prototype, 'LogMsg');
         mockExecSync.mockImplementation((command: string): any => {
             if (command.includes('git remote -v')) {
                 return Buffer.from('');
             } else if (command.includes('git branch --set-upstream-to=origin/main main')) {
-                return Buffer.from(''); // Simulate success instead of throwing.
+                return Buffer.from('');
             } else if (command.includes('git pull')) {
                 return Buffer.from('Pulled successfully');
             } else if (command.includes('git status --porcelain')) {

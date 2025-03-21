@@ -46,3 +46,5 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
         console.log(output + ColorUtility.RESET);
     }
 }
+
+export { Logger };
