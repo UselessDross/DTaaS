@@ -99,3 +99,11 @@ class AutoSync {
 }
 
 export { AutoSync };
+
+
+/*
+
+look at nest js feature strucotr. and then follow it.
+
+
+*/
