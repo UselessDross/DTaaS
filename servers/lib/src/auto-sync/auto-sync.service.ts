@@ -1,8 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import { ConsoleLogger } from '../util/logger';
+import { ConsoleLogger } from '../util/logger.js';
 import * as cp from 'child_process';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
+
+function findGitRoot(startDir: string): string {
+    let current = startDir;
+    const root = path.parse(startDir).root;
+    while (current !== root && !existsSync(path.join(current, '.git'))) {
+        current = path.dirname(current);
+    }
+    if (existsSync(path.join(current, '.git'))) {
+        return current;
+    } else {
+        throw new Error('Git root not found');
+    }
+}
 
 @Injectable()
 export class AutoSyncService {
@@ -10,10 +24,9 @@ export class AutoSyncService {
 
     // Logger is injected via the constructor following NestJS dependency injection.
     constructor(private readonly logger: ConsoleLogger) {
-        // Calculate the repository path relative to this file.
         const __filename = fileURLToPath(import.meta.url);
         const __dirname = path.dirname(__filename);
-        this.repoPath = path.join(__dirname, '../../../lib');
+        this.repoPath = findGitRoot(__dirname);
         this.logger.LogMsg('AutoSyncService initialized.');
     }
 
@@ -32,7 +45,8 @@ export class AutoSyncService {
     private runCommand(command: string, cwd: string): string | null {
         this.logger.LogMsg(`Running command: "${command}" in directory: ${cwd}`);
         try {
-            const output = cp.execSync(command, { cwd, stdio: 'pipe' });
+            const shellOption = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
+            const output = cp.execSync(command, { cwd, stdio: 'pipe', shell: shellOption });
             const outStr = output.toString().trim();
             this.logger.LogMsg(`Command output: ${outStr}`);
             return outStr;

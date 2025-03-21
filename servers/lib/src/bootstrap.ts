@@ -3,7 +3,8 @@ import AppModule from './app.module.js';
 import cloudCMD from './cloudcmd/cloudcmd.js';
 import { Logger } from '@nestjs/common';
 import { CONFIG_SERVICE, IConfig } from './config/config.interface.js';
-import { AutoSync } from './util/autoSync.js'; // Import AutoSync
+import { AutoSyncService } from './auto-sync/auto-sync.service.js';
+import { resolve } from 'path';
 
 type BootstrapOptions = {
   config?: string;
@@ -31,9 +32,10 @@ export default async function bootstrap(options?: BootstrapOptions) {
     cloudCMD(app, options.httpServer, configService.getLocalPath());
   }
 
-  // Start the auto-sync process
-  const autoSync = new AutoSync();
-  autoSync.scheduleAutoSync(15); // Schedule every 15 minutes
+  // Get autoSyncService and override its repository path using configuration
+  const autoSyncService = app.get<AutoSyncService>(AutoSyncService);
+  // autoSyncService.setRepository(resolve(configService.getLocalPath()));
+  autoSyncService.scheduleAutoSync(3);
 
   await app.listen(port);
 }

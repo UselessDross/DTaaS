@@ -7,6 +7,7 @@ import { ConfigModule } from './config/config.module.js';
 import { CONFIG_SERVICE, IConfig } from './config/config.interface.js';
 import { ConsoleLogger } from './util/logger.js'; //2025-03-03: added with the intent of following
 //                                                              the NestJS style integration test
+import { AutoSyncModule } from './auto-sync/auto-sync.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ConsoleLogger } from './util/logger.js'; //2025-03-03: added with the i
       inject: [CONFIG_SERVICE],
     }),
     FilesModule,
+    AutoSyncModule,
   ],
   providers: [ConsoleLogger], //2025-03-03: to supposed implement the custom logger
 })
