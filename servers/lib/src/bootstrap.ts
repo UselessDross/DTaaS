@@ -4,7 +4,7 @@ import cloudCMD from './cloudcmd/cloudcmd.js';
 import { Logger } from '@nestjs/common';
 import { CONFIG_SERVICE, IConfig } from './config/config.interface.js';
 import { AutoSyncService } from './auto-sync/auto-sync.service.js';
-import { resolve } from 'path';
+// import { resolve } from 'path';
 
 type BootstrapOptions = {
   config?: string;

@@ -4,7 +4,6 @@ import { ColorUtility } from "./ColorUtility.js";
 //=removed=
 //Ensure the ConsoleLogger class is properly set up as a NestJS service.
 const LINE_LENGTH: number = 90;
-const INDENT_SPACES: string = "              "; //14 spaces
 
 @Injectable()
 export class ConsoleLogger extends Logger implements IConsoleLogger {
@@ -35,24 +34,29 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
         const second = _date.getSeconds().toString().padStart(2, '0');
         const timestamp = `${year}.${month}.${day}|${hour}:${minute}:${second}`;
 
-        // Build a prefix string and compute an indent (without color codes) for wrapped lines.
+        // Build prefix and indent so that any wrapped or existing newlines align.
         const prefixText = `${MSG_SYMBOLD} - ${timestamp} - ${MSG_SYMBOLD} `;
         const prefix = `${ColorChar}${prefixText}`;
         const indent = " ".repeat(prefixText.length);
 
-        const words = message.split(" ");
-        let currentLine = "";
-        let output = prefix;
-
-        for (const word of words) {
-            if ((currentLine + word).length > maxLineLength) {
-                output += currentLine.trim() + "\n" + indent;
-                currentLine = word + " ";
-            } else {
-                currentLine += word + " ";
+        // Split by newline first, then word-wrap each line; then join using "\n" + indent.
+        const messageLines = message.split("\n");
+        const wrappedLines = messageLines.map(line => {
+            const words = line.split(" ");
+            let currentLine = "";
+            let wrapped = "";
+            for (const word of words) {
+                if ((currentLine + word).length > maxLineLength && currentLine !== "") {
+                    wrapped += currentLine.trim() + "\n" + indent;
+                    currentLine = word + " ";
+                } else {
+                    currentLine += word + " ";
+                }
             }
-        }
-        output += currentLine.trim();
+            return wrapped + currentLine.trim();
+        });
+
+        const output = prefix + wrappedLines.join("\n" + indent);
 
         console.log(output + ColorUtility.RESET);
     }
