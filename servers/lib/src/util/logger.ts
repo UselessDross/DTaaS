@@ -26,22 +26,22 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
         ColorChar: string,
         MSG_SYMBOLD: string,
     ): void {
-        const timestamp = new Date().toISOString();
-        const words = message.split(" ");
-        let currentLine = "";
-        let output = `${ColorChar}${MSG_SYMBOLD} ${timestamp} ${MSG_SYMBOLD} ` + " ";
-
-        for (const word of words) {
-            if ((currentLine + word).length > maxLineLength) {
-                output += ColorChar + currentLine.trim() + "\n" + ColorUtility.RESET + INDENT_SPACES + ColorChar;
-                currentLine = word + " ";
-            } else {
-                currentLine += word + " ";
-            }
-        }
-        // Append any remaining text.
-        output += currentLine.trim();
-
+        // Remove the full ISO timestamp; use a simple placeholder instead.
+        const timePlaceholder = "[TIME]";
+        let output = `${ColorChar}${MSG_SYMBOLD} ${timePlaceholder} ${MSG_SYMBOLD} ${message}`;
+        // Optionally, you can wrap the message if needed:
+        // const words = message.split(" ");
+        // let currentLine = "";
+        // let output = `${ColorChar}${MSG_SYMBOLD} ${timePlaceholder} ${MSG_SYMBOLD} `;
+        // for (const word of words) {
+        //     if ((currentLine + word).length > maxLineLength) {
+        //         output += ColorChar + currentLine.trim() + "\n" + ColorUtility.RESET + INDENT_SPACES + ColorChar;
+        //         currentLine = word + " ";
+        //     } else {
+        //         currentLine += word + " ";
+        //     }
+        // }
+        // output += currentLine.trim();
 
         console.log(output + ColorUtility.RESET);
     }
