@@ -26,29 +26,33 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
         ColorChar: string,
         MSG_SYMBOLD: string,
     ): void {
-        const _date: Date = new Date();
+        const _date = new Date();
         const year = _date.getFullYear();
         const month = (_date.getMonth() + 1).toString().padStart(2, '0');
         const day = _date.getDate().toString().padStart(2, '0');
         const hour = _date.getHours().toString().padStart(2, '0');
         const minute = _date.getMinutes().toString().padStart(2, '0');
         const second = _date.getSeconds().toString().padStart(2, '0');
-        const timestamp: string = `${year}.${month}.${day}|${hour}:${minute}:${second}`;
+        const timestamp = `${year}.${month}.${day}|${hour}:${minute}:${second}`;
+
+        // Build a prefix string and compute an indent (without color codes) for wrapped lines.
+        const prefixText = `${MSG_SYMBOLD} - ${timestamp} - ${MSG_SYMBOLD} `;
+        const prefix = `${ColorChar}${prefixText}`;
+        const indent = " ".repeat(prefixText.length);
+
         const words = message.split(" ");
         let currentLine = "";
-        let output = `${ColorChar}${MSG_SYMBOLD}- ${timestamp} -${MSG_SYMBOLD}` + " ";
+        let output = prefix;
 
         for (const word of words) {
             if ((currentLine + word).length > maxLineLength) {
-                output += ColorChar + currentLine.trim() + "\n" + ColorUtility.RESET + INDENT_SPACES + ColorChar;
+                output += currentLine.trim() + "\n" + indent;
                 currentLine = word + " ";
             } else {
                 currentLine += word + " ";
             }
         }
-        // Append any remaining text.
         output += currentLine.trim();
-
 
         console.log(output + ColorUtility.RESET);
     }
