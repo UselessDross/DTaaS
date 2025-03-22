@@ -66,7 +66,13 @@ export class AutoSyncService {
         this.logger.LogMsg(`Starting auto sync process for repository at: ${this.repoPath}`);
         try {
             this.runCommand('git remote -v', this.repoPath);
-            this.runCommand('git branch --set-upstream-to=origin/main main', this.repoPath);
+            // Determine current branch name and set upstream accordingly.
+            const currentBranch = this.runCommand('git rev-parse --abbrev-ref HEAD', this.repoPath);
+            if (currentBranch && currentBranch !== 'HEAD') {
+                this.runCommand(`git branch --set-upstream-to=origin/${currentBranch} ${currentBranch}`, this.repoPath);
+            } else {
+                this.logger.WarningMsg('Unable to determine current branch; skipping upstream branch setup.');
+            }
         } catch (err) {
             this.logger.ErrorMsg('Error setting upstream: ' + (err instanceof Error ? err.message : err));
         }
