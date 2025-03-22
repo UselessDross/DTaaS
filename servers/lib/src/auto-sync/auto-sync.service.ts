@@ -92,7 +92,7 @@ export class AutoSyncService {
         this.runCommand('git add .', this.repoPath);
 
         const timestamp = new Date().toISOString();
-        this.logger.LogMsg(`Committing changes with message: "🤖Auto commit🤖 at ${timestamp}"`);
+        this.logger.LogMsg(`Committing changes with message:"🤖Auto commit🤖 at ${timestamp}"`);
         this.runCommand(`git commit -m "🤖Auto commit🤖 at ${timestamp}"`, this.repoPath);
 
         this.logger.LogMsg('Pushing changes...');
