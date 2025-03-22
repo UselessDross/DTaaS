@@ -20,29 +20,21 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
         this.printWrappedMessage(message, maxLineLength, ColorUtility.FG_BLACK, "  MSG  ");
     }
 
+    // New helper method to return a formatted timestamp.
+    private getFormattedTimestamp(): string {
+        // You can customize the format here. For example, toLocaleTimeString returns HH:MM:SS.
+        return new Date().toLocaleTimeString();
+    }
+
     private printWrappedMessage(
         message: string,
         maxLineLength: number,
         ColorChar: string,
         MSG_SYMBOLD: string,
     ): void {
-        // Remove the full ISO timestamp; use a simple placeholder instead.
-        const timePlaceholder = "[TIME]";
-        let output = `${ColorChar}${MSG_SYMBOLD} ${timePlaceholder} ${MSG_SYMBOLD} ${message}`;
-        // Optionally, you can wrap the message if needed:
-        // const words = message.split(" ");
-        // let currentLine = "";
-        // let output = `${ColorChar}${MSG_SYMBOLD} ${timePlaceholder} ${MSG_SYMBOLD} `;
-        // for (const word of words) {
-        //     if ((currentLine + word).length > maxLineLength) {
-        //         output += ColorChar + currentLine.trim() + "\n" + ColorUtility.RESET + INDENT_SPACES + ColorChar;
-        //         currentLine = word + " ";
-        //     } else {
-        //         currentLine += word + " ";
-        //     }
-        // }
-        // output += currentLine.trim();
-
+        const timestamp = this.getFormattedTimestamp();
+        let output = `${ColorChar}${MSG_SYMBOLD} ${timestamp} ${MSG_SYMBOLD} ${message}`;
+        // Optionally add word wrapping if needed:
         console.log(output + ColorUtility.RESET);
     }
 }
