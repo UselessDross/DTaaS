@@ -20,21 +20,36 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
         this.printWrappedMessage(message, maxLineLength, ColorUtility.FG_BLACK, "  MSG  ");
     }
 
-    // New helper method to return a formatted timestamp.
-    private getFormattedTimestamp(): string {
-        // You can customize the format here. For example, toLocaleTimeString returns HH:MM:SS.
-        return new Date().toLocaleTimeString();
-    }
-
     private printWrappedMessage(
         message: string,
         maxLineLength: number,
         ColorChar: string,
         MSG_SYMBOLD: string,
     ): void {
-        const timestamp = this.getFormattedTimestamp();
-        let output = `${ColorChar}${MSG_SYMBOLD} ${timestamp} ${MSG_SYMBOLD} ${message}`;
-        // Optionally add word wrapping if needed:
+        const _date: Date = new Date();
+        const year = _date.getFullYear();
+        const month = (_date.getMonth() + 1).toString().padStart(2, '0');
+        const day = _date.getDate().toString().padStart(2, '0');
+        const hour = _date.getHours().toString().padStart(2, '0');
+        const minute = _date.getMinutes().toString().padStart(2, '0');
+        const second = _date.getSeconds().toString().padStart(2, '0');
+        const timestamp: string = `${year}.${month}.${day}|${hour}:${minute}:${second}`;
+        const words = message.split(" ");
+        let currentLine = "";
+        let output = `${ColorChar}${MSG_SYMBOLD}- ${timestamp} -${MSG_SYMBOLD}` + " ";
+
+        for (const word of words) {
+            if ((currentLine + word).length > maxLineLength) {
+                output += ColorChar + currentLine.trim() + "\n" + ColorUtility.RESET + INDENT_SPACES + ColorChar;
+                currentLine = word + " ";
+            } else {
+                currentLine += word + " ";
+            }
+        }
+        // Append any remaining text.
+        output += currentLine.trim();
+
+
         console.log(output + ColorUtility.RESET);
     }
 }
