@@ -35,7 +35,7 @@ export default async function bootstrap(options?: BootstrapOptions) {
   // Get autoSyncService and override its repository path using configuration
   const autoSyncService = app.get<AutoSyncService>(AutoSyncService);
   // autoSyncService.setRepository(resolve(configService.getLocalPath()));
-  autoSyncService.scheduleAutoSync(3);
+  autoSyncService.scheduleAutoSync(15);
 
   await app.listen(port);
 }

@@ -3,9 +3,9 @@
 The **lib microservice** is a simplified file manager which serves files
 from local file system or public git repositories. It is possible to
 
-* Upload and download files from web browser
-* Query available files and download them using GraphQL API
-* Clone public git repositories and serve them as local files
+- Upload and download files from web browser
+- Query available files and download them using GraphQL API
+- Clone public git repositories and serve them as local files
 
 ## Use in Docker Environment
 
@@ -23,7 +23,7 @@ services:
       - ./libms.yaml:/dtaas/libms/libms.yaml
       - ./files:/dtaas/libms/files
     ports:
-      - "4001:4001"
+      - '4001:4001'
 ```
 
 ### Create Files Directory (optional)
@@ -59,13 +59,13 @@ The template configuration file is:
 
 ```yaml
 port: '4001'
-mode: 'local'    #git or local
+mode: 'local' #git or local
 local-path: 'files'
 log-level: 'debug'
 apollo-path: '/lib'
 graphql-playground: 'true'
 
-git-repos:   #only used in git mode
+git-repos: #only used in git mode
   - user1:
       repo-url: 'https://gitlab.com/dtaas/user1.git'
   - user2:
@@ -95,7 +95,7 @@ are supported at present.
 A fragment of the config for `git` mode is:
 
 ```yaml
-...
+---
 git-repos:
   - user1:
       repo-url: 'https://gitlab.com/dtaas/user1.git'
@@ -150,7 +150,7 @@ The lib microservice takes two distinct GraphQL queries.
 This query receives directory path and provides list of files
 in that directory. A sample query and response are given here.
 
-``` graphql
+```graphql
 query {
   listDirectory(path: ".") {
     repository {
@@ -177,7 +177,7 @@ query {
 }
 ```
 
-``` graphql
+```graphql
 {
   "data": {
     "listDirectory": {
@@ -360,3 +360,84 @@ X-Powered-By: Express
 
 <!-- markdownlint-enable MD013 -->
 </details>
+
+<!--                                      -->
+<!--                                      -->
+<!--  Directly copied from the README.md  -->
+<!--                                      -->
+<!-- Below is the documentation for the   -->
+<!--       autoSync feature. HOWEVER!     -->
+<!--       this was written by ChatGPT,   -->
+<!--       with editing and adjustment    -->
+<!--       by the Programer.              -->
+<!--                                      -->
+
+## 🤖 AutoSync Feature
+
+The **autoSync** feature enables automated synchronization
+between the local repository and its remote Git counterpart.
+The intent is to help keep changes up to date by
+performing periodic sequences of Git operations automatically.
+
+### How It Works
+
+- **Upstream Configuration:**  
+  The service attempts to set the upstream branch (e.g., `origin/main`).
+  If it cannot determine the current branch, a warning is logged and the upstream configuration is skipped.
+
+- **Pull Latest Changes:**  
+  The service automatically pulls the latest changes from the remote repository.
+
+- **Local Change Detection:**  
+  It examines the repository's status using `git status --porcelain` to detect any local modifications.
+
+- **Commit and Push:**  
+  If modifications are found, the service stages the changes (`git add .`), commits them with an auto-generated message
+  (including a timestamp and the chosen automation symbol 🤖 for ease of finding and reading the commits),
+  and pushes the changes back to the remote repository.
+
+- **Error Handling and Logging:**  
+  Every step is logged for transparency, ensuring that any issues
+  (e.g., errors during pull, commit, or push)
+  are reported through detailed log messages with the time stamps
+  to decern which happened when and where.
+
+### Configuration
+
+The autoSync feature works in Git mode.
+Ensure that your YAML configuration file
+(e.g., `libms.yaml`) is updated appropriately.
+An example configuration fragment for Git mode is:
+
+```yaml
+mode: 'git' # <==--
+git-repos:
+  - user1:
+      repo-url: 'https://gitlab.com/dtaas/user1.git'
+  - user2:
+      repo-url: 'https://gitlab.com/dtaas/user2.git'
+  - common:
+      repo-url: 'https://gitlab.com/dtaas/common.git'
+```
+
+### Usage
+
+- **Manual Synchronization:**  
+  Trigger a sync manually by calling the `syncRepository()` method provided by the AutoSync service.
+
+- **Scheduled Synchronization:**  
+  To have the synchronization process run at regular intervals, invoke the `scheduleAutoSync(intervalSeconds)` method. For instance, `scheduleAutoSync(60)` will run the sync every 60 seconds.
+
+- **Manually Setting the chosen Repository**
+  Call the `setRepository()` API that takes the path for the repo wanted to.
+
+- **Finding out the current Repository**
+  Call the `GetCurrentRepository()` API to get the repo path the autoSync is set to.
+
+Each auto-generated commit appears similar to the example below:
+
+```
+🤖Auto commit🤖 at 2025-03-24T12:00:00.000Z
+```
+
+This integration helps ensure your local repository remains synchronized with the remote source automatically.
