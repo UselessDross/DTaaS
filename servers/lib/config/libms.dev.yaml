@@ -1,6 +1,7 @@
 port: "4001"
 mode: "local" #git or local
-local-path: "/dtaas/libms/files" # concatinate line 13, 16 and 19 respectivly, but not together on one line.
+# local-path: "/dtaas/libms/files" # concatinate line 13, 16 and 19 respectivly, but not together on one line.
+local-path: "C:/Education/Bachelor/BachelorWorkRepo/DTaaS/files"
 log-level: "debug"
 apollo-path: "/lib"
 graphql-playground: "true"
