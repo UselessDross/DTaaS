@@ -79,7 +79,7 @@ class AutoSync {
         this.logger.LogMsg('Pushing changes...');
         this.runCommand('git push', this.repoPath);
 
-        this.logger.LogMsg('Auto sync completed successfully.');
+        this.logger.LogMsg('ooooooooooooooooooooAuto sync completed successfully.');
     }
     public async syncRepository(): Promise<void> { await this.autoSync(); }
 
