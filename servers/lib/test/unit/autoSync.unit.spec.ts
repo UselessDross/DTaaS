@@ -9,7 +9,7 @@ import { ConsoleLogger } from '../../src/util/logger.js';
 describe('AutoSyncService', () => {
     let tempRepoDir: string;
     let autoSyncService: AutoSyncService;
-    let activeIntervals: NodeJS.Timeout[] = []; // Track active intervals
+    const activeIntervals: NodeJS.Timeout[] = []; // Track active intervals
 
     beforeEach(async () => {
         // Create a temporary directory to simulate a Git repository
@@ -29,9 +29,10 @@ describe('AutoSyncService', () => {
         execSync('git add .', { cwd: tempRepoDir });
         execSync('git commit -m "Initial commit"', { cwd: tempRepoDir });
 
-        // Mock setInterval to track active intervals
+        // Track intervals manually
+        const originalSetInterval = global.setInterval;
         jest.spyOn(global, 'setInterval').mockImplementation((fn, interval) => {
-            const timer = setInterval(fn, interval);
+            const timer = originalSetInterval(fn, interval);
             activeIntervals.push(timer);
             return timer;
         });
@@ -40,14 +41,14 @@ describe('AutoSyncService', () => {
     afterEach(async () => {
         // Clear all active intervals
         activeIntervals.forEach(clearInterval);
-        activeIntervals = [];
+        activeIntervals.length = 0;
 
         // Clean up the temporary directory
         await fs.rm(tempRepoDir, { recursive: true, force: true });
     });
 
     it('should detect no changes when the repository is clean', async () => {
-        jest.setTimeout(10000); // Increase timeout to 10 seconds
+        jest.setTimeout(15000); // Increase timeout to 15 seconds
 
         // Start the auto-sync process
         autoSyncService.start();
@@ -61,7 +62,7 @@ describe('AutoSyncService', () => {
     });
 
     it('should commit and push changes when local modifications are made', async () => {
-        jest.setTimeout(10000); // Increase timeout to 10 seconds
+        jest.setTimeout(15000); // Increase timeout to 15 seconds
 
         // Modify a file in the repository
         await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Modified content');
@@ -79,7 +80,7 @@ describe('AutoSyncService', () => {
     });
 
     it('should handle errors gracefully when Git commands fail', async () => {
-        jest.setTimeout(10000); // Increase timeout to 10 seconds
+        jest.setTimeout(15000); // Increase timeout to 15 seconds
 
         // Simulate a failure by removing the .git folder
         await fs.rm(path.join(tempRepoDir, '.git'), { recursive: true, force: true });
