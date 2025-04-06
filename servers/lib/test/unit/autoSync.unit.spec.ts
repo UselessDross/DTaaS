@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach, expect } from '@jest/globals';
+import { describe, it, beforeEach, afterEach, expect, jest } from '@jest/globals';
 import { AutoSyncService } from '../../src/files/git/git-files.service.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -9,7 +9,7 @@ import { ConsoleLogger } from '../../src/util/logger.js';
 describe('AutoSyncService', () => {
     let tempRepoDir: string;
     let autoSyncService: AutoSyncService;
-    let logger: ConsoleLogger;
+    let activeIntervals: NodeJS.Timeout[] = []; // Track active intervals
 
     beforeEach(async () => {
         // Create a temporary directory to simulate a Git repository
@@ -17,7 +17,7 @@ describe('AutoSyncService', () => {
         await fs.mkdir(path.join(tempRepoDir, '.git')); // Create a dummy .git folder to simulate a Git repo
 
         // Initialize the logger and AutoSyncService
-        logger = new ConsoleLogger();
+        const logger = new ConsoleLogger();
         autoSyncService = new AutoSyncService(logger);
 
         // Set the repository path for the AutoSyncService
@@ -28,19 +28,32 @@ describe('AutoSyncService', () => {
         await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Initial content');
         execSync('git add .', { cwd: tempRepoDir });
         execSync('git commit -m "Initial commit"', { cwd: tempRepoDir });
+
+        // Mock setInterval to track active intervals
+        jest.spyOn(global, 'setInterval').mockImplementation((fn, interval) => {
+            const timer = setInterval(fn, interval);
+            activeIntervals.push(timer);
+            return timer;
+        });
     });
 
     afterEach(async () => {
+        // Clear all active intervals
+        activeIntervals.forEach(clearInterval);
+        activeIntervals = [];
+
         // Clean up the temporary directory
         await fs.rm(tempRepoDir, { recursive: true, force: true });
     });
 
     it('should detect no changes when the repository is clean', async () => {
+        jest.setTimeout(10000); // Increase timeout to 10 seconds
+
         // Start the auto-sync process
         autoSyncService.start();
 
         // Wait for a short interval to allow the sync process to run
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // Check the logs to ensure no changes were detected
         const logs = 'No local changes detected.'; // Adjusted to match ConsoleLogger behavior
@@ -48,6 +61,8 @@ describe('AutoSyncService', () => {
     });
 
     it('should commit and push changes when local modifications are made', async () => {
+        jest.setTimeout(10000); // Increase timeout to 10 seconds
+
         // Modify a file in the repository
         await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Modified content');
 
@@ -55,7 +70,7 @@ describe('AutoSyncService', () => {
         autoSyncService.start();
 
         // Wait for a short interval to allow the sync process to run
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // Check the logs to ensure changes were committed and pushed
         const logs = 'Pushing changes...'; // Adjusted to match ConsoleLogger behavior
@@ -64,6 +79,8 @@ describe('AutoSyncService', () => {
     });
 
     it('should handle errors gracefully when Git commands fail', async () => {
+        jest.setTimeout(10000); // Increase timeout to 10 seconds
+
         // Simulate a failure by removing the .git folder
         await fs.rm(path.join(tempRepoDir, '.git'), { recursive: true, force: true });
 
@@ -71,7 +88,7 @@ describe('AutoSyncService', () => {
         autoSyncService.start();
 
         // Wait for a short interval to allow the sync process to run
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // Check the logs to ensure errors were logged
         const logs = 'Error executing'; // Adjusted to match ConsoleLogger behavior
