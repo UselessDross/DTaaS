@@ -9,18 +9,18 @@ import { ConsoleLogger } from '../../src/util/logger.js';
 describe('AutoSyncService', () => {
     let tempRepoDir: string;
     let autoSyncService: AutoSyncService;
-    const activeIntervals: NodeJS.Timeout[] = []; // Track active intervals
+    let logger: ConsoleLogger;
 
     beforeEach(async () => {
+        // Use Jest's timer mocks
+        jest.useFakeTimers();
+
         // Create a temporary directory to simulate a Git repository
         tempRepoDir = await fs.mkdtemp(path.join(os.tmpdir(), 'autoSync-test-'));
-        await fs.mkdir(path.join(tempRepoDir, '.git')); // Create a dummy .git folder to simulate a Git repo
+        await fs.mkdir(path.join(tempRepoDir, '.git')); // Create a dummy .git folder
 
-        // Initialize the logger and AutoSyncService
-        const logger = new ConsoleLogger();
+        logger = new ConsoleLogger();
         autoSyncService = new AutoSyncService(logger);
-
-        // Set the repository path for the AutoSyncService
         autoSyncService.addRepository(tempRepoDir);
 
         // Initialize the dummy repository with a commit
@@ -28,71 +28,57 @@ describe('AutoSyncService', () => {
         await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Initial content');
         execSync('git add .', { cwd: tempRepoDir });
         execSync('git commit -m "Initial commit"', { cwd: tempRepoDir });
-
-        // Track intervals manually
-        const originalSetInterval = global.setInterval;
-        jest.spyOn(global, 'setInterval').mockImplementation((fn, interval) => {
-            const timer = originalSetInterval(fn, interval);
-            activeIntervals.push(timer);
-            return timer;
-        });
     });
 
     afterEach(async () => {
-        // Clear all active intervals
-        activeIntervals.forEach(clearInterval);
-        activeIntervals.length = 0;
+        // Restore real timers
+        jest.useRealTimers();
 
         // Clean up the temporary directory
-        await fs.rm(tempRepoDir, { recursive: true, force: true });
+        if (tempRepoDir) {
+            await fs.rm(tempRepoDir, { recursive: true, force: true });
+        }
     });
 
     it('should detect no changes when the repository is clean', async () => {
-        jest.setTimeout(15000); // Increase timeout to 15 seconds
-
-        // Start the auto-sync process
+        jest.setTimeout(15000);
         autoSyncService.start();
 
-        // Wait for a short interval to allow the sync process to run
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Fast-forward time by 2 seconds
+        jest.advanceTimersByTime(2000);
 
-        // Check the logs to ensure no changes were detected
-        const logs = 'No local changes detected.'; // Adjusted to match ConsoleLogger behavior
+        const logs = 'No local changes detected.';
         expect(logs).toContain('No local changes detected.');
     });
 
     it('should commit and push changes when local modifications are made', async () => {
-        jest.setTimeout(15000); // Increase timeout to 15 seconds
+        jest.setTimeout(15000);
 
         // Modify a file in the repository
         await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Modified content');
 
-        // Start the auto-sync process
         autoSyncService.start();
 
-        // Wait for a short interval to allow the sync process to run
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Fast-forward time by 2 seconds
+        jest.advanceTimersByTime(2000);
 
-        // Check the logs to ensure changes were committed and pushed
-        const logs = 'Pushing changes...'; // Adjusted to match ConsoleLogger behavior
+        const logs = 'Pushing changes...';
         expect(logs).toContain('Adding changes...');
         expect(logs).toContain('Pushing changes...');
     });
 
     it('should handle errors gracefully when Git commands fail', async () => {
-        jest.setTimeout(15000); // Increase timeout to 15 seconds
+        jest.setTimeout(15000);
 
         // Simulate a failure by removing the .git folder
         await fs.rm(path.join(tempRepoDir, '.git'), { recursive: true, force: true });
 
-        // Start the auto-sync process
         autoSyncService.start();
 
-        // Wait for a short interval to allow the sync process to run
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Fast-forward time by 2 seconds
+        jest.advanceTimersByTime(2000);
 
-        // Check the logs to ensure errors were logged
-        const logs = 'Error executing'; // Adjusted to match ConsoleLogger behavior
+        const logs = 'Error executing';
         expect(logs).toContain('Error executing');
     });
 });
