@@ -30,8 +30,21 @@ describe('AutoSyncService', () => {
     let tempRepoDir: string;
     let autoSyncService: AutoSyncService;
     let testLogger: TestLogger;
+    let intervals: NodeJS.Timeout[] = [];
+
+    // Set timeout for all tests in this suite
+    jest.setTimeout(30000);
 
     beforeEach(async () => {
+        // Mock setInterval to track and unref intervals
+        const originalSetInterval = global.setInterval;
+        jest.spyOn(global, 'setInterval').mockImplementation((fn, ms) => {
+            const interval = originalSetInterval(fn, ms);
+            interval.unref(); // Prevent keeping process alive
+            intervals.push(interval);
+            return interval;
+        });
+
         // Create a temporary directory to simulate a Git repository
         tempRepoDir = await fs.mkdtemp(path.join(os.tmpdir(), 'autoSync-test-'));
         await fs.mkdir(path.join(tempRepoDir, '.git'));
@@ -50,42 +63,50 @@ describe('AutoSyncService', () => {
     });
 
     afterEach(async () => {
+        // Clear all intervals
+        intervals.forEach(interval => clearInterval(interval));
+        intervals = [];
+
+        // Restore original setInterval
+        jest.restoreAllMocks();
+
         if (tempRepoDir) {
             await fs.rm(tempRepoDir, { recursive: true, force: true });
         }
     });
 
     it('should detect no changes when the repository is clean', async () => {
-        jest.setTimeout(15000);
         autoSyncService.start();
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        // Wait for sync cycle
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         const logMessages = testLogger.messages.join('\n');
         expect(logMessages).toContain('No local changes detected');
-    });
+    }, 15000);
 
     it('should commit and push changes when local modifications are made', async () => {
-        jest.setTimeout(15000);
-
         await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Modified content');
+
         autoSyncService.start();
 
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Wait for sync cycle
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         const logMessages = testLogger.messages.join('\n');
         expect(logMessages).toContain('Adding changes');
         expect(logMessages).toContain('Pushing changes');
-    });
+    }, 15000);
 
     it('should handle errors gracefully when Git commands fail', async () => {
-        jest.setTimeout(15000);
-
         await fs.rm(path.join(tempRepoDir, '.git'), { recursive: true, force: true });
+
         autoSyncService.start();
 
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Wait for sync cycle
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         const logMessages = testLogger.messages.join('\n');
         expect(logMessages).toContain('Error executing');
-    });
+    }, 15000);
 });
