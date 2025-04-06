@@ -9,6 +9,8 @@ import { ConsoleLogger } from '../../util/logger.js';
 import Config from '../../config/config.service.js';
 import { Project } from 'src/types.js';
 import * as git from 'isomorphic-git';
+import * as cp from 'child_process';
+import { fileURLToPath } from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -22,24 +24,21 @@ export default class GitFilesService implements IFilesService {
     this.dataPath = this.configService.getLocalPath();
     this.logger = new ConsoleLogger(GitFilesService.name);
   }
-
   private async cloneRepositories(): Promise<void> {
-    const userRepoConfigs: { [key: string]: GitRepo }[] = this.configService.getGitRepos(); // Returns an ARRAY of type '{ [key: string]: GitRepo }';;
-    const clonePromises: Promise<void>[] = [];                 // An array of promises of type void meant to store the promises of the git.clone() method.;
-    userRepoConfigs.forEach((configObj) => {                   // The userRepoConfigs is of type { [key: string]: GitRepo }[] so in this foreach loop we say for each '{ [key: string]: GitRepo }' object in the array do the following:
-      Object.keys(configObj).forEach((userKey) => {            // Take the { [key: string]: GitRepo } object and for each key (The name of the repo object think user1 or user2 or common) do the following:
-        if (!this.isValidUserKey(userKey)) { throw new Error(`Invalid userKey: ${userKey}`); } // If the key is is not valid, meaning it is not numbers, letters underscores or hyphens, then throw an error;
-        const gitRepo: GitRepo = configObj[userKey];           // Assign the v̲a̲l̲u̲e̲ of the key to the variable 'g̲i̲t̲R̲e̲p̲o̲' that being the G̲i̲t̲R̲e̲p̲o̲ object;
-        if (!gitRepo || typeof gitRepo['repo-url'] !== 'string') { throw new Error('Invalid repo config'); } // This is added in hopes of appeasing Codacy if it’s extremely strict.
-        const repoUrl: string = gitRepo['repo-url'];           // Assign the v̲a̲l̲u̲e̲ of the key (string) 'repo-url' to the variable 'r̲e̲p̲o̲U̲r̲l̲';
-        const httpToken: string = gitRepo['http-token'];       // Assign the v̲a̲l̲u̲e̲ of the key (string) 'http-token' to the variable 'h̲t̲t̲p̲T̲o̲k̲e̲n̲';
-        const typedClone = (git.clone as unknown as (opts: any) => Promise<void>); // this is added in hope of appeasing codacy, because it apperes Codacy does NOT know the type of 'git.clone' 
-        const clonePromise = typedClone({                       // Assign the promise of the git.clone() method to the variable 'c̲l̲o̲n̲e̲P̲r̲o̲m̲i̲s̲e̲'; it is modifyed with the typedClone in hopes of appeasing Codacy;
+    const userRepoConfigs: { [key: string]: GitRepo }[] = this.configService.getGitRepos();
+    const clonePromises: Promise<void>[] = [];
+    userRepoConfigs.forEach((configObj) => {
+      Object.keys(configObj).forEach((userKey) => {
+        if (!this.isValidUserKey(userKey)) { throw new Error(`Invalid userKey: ${userKey}`); }
+        const gitRepo: GitRepo = configObj[userKey];
+        if (!gitRepo || typeof gitRepo['repo-url'] !== 'string') { throw new Error('Invalid repo config'); }
+        const repoUrl: string = gitRepo['repo-url'];
+        const httpToken: string = gitRepo['http-token'];
+        const typedClone = (git.clone as unknown as (opts: any) => Promise<void>);
+        const clonePromise = typedClone({
           fs,
           http,
-          // codacy-disable security/insecure-storage
           dir: path.join(this.dataPath, userKey),
-          // codacy-disable security/insecure-storage
           gitdir: path.join(this.dataPath, 'gitdir', userKey, '.git'),
           url: this.buildAuthUrl(repoUrl, httpToken),
           singleBranch: true,
@@ -51,31 +50,202 @@ export default class GitFilesService implements IFilesService {
     await Promise.all(clonePromises);
   }
 
+  private buildAuthUrl(repoUrl: string, httpToken?: string): string { return httpToken ? `https://${httpToken}@${repoUrl.replace('https://', '')}` : repoUrl; }
+  init(): Promise<void> { return this.cloneRepositories(); }
+  getMode(): CONFIG_MODE { return CONFIG_MODE.GIT; }
+  listDirectory(path: string): Promise<Project> { return this.localFilesService.listDirectory(path); }
+  readFile(path: string): Promise<Project> { return this.localFilesService.readFile(path); }
+  isValidUserKey(key: string): boolean { return /^[A-Za-z0-9_-]+$/.test(key); }
+}
+// -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =
+// -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =
+// -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =
+// NOTE: The auto-sync functionality is integrated in this file (see below) and is not using the separate autoSync.ts module.
+// -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =
 
 
 
-  private buildAuthUrl(repoUrl: string, httpToken?: string): string {
-    return httpToken ? `https://${httpToken}@${repoUrl.replace('https://', '')}` : repoUrl;
+
+
+//==========================================================
+//==========================================================
+//==========================================================
+function findGitRoot(dir: string): string {
+  while (dir !== path.parse(dir).root) {
+    if (fs.existsSync(path.join(dir, '.git'))) {
+      return dir;
+    }
+    dir = path.dirname(dir);
   }
+  throw new Error('Git root not found');
+}
 
-  init(): Promise<void> {
-    return this.cloneRepositories();
-  }
+class CommandExecutor {
+  constructor(private logger: ConsoleLogger) { }
 
-  getMode(): CONFIG_MODE {
-    return CONFIG_MODE.GIT;
-  }
-
-  listDirectory(path: string): Promise<Project> {
-    return this.localFilesService.listDirectory(path);
-  }
-
-  readFile(path: string): Promise<Project> {
-    return this.localFilesService.readFile(path);
-  }
-
-  isValidUserKey(key: string): boolean {
-    // ^[A-Za-z0-9_-]+$ means only letters, digits, underscore, hyphen
-    return /^[A-Za-z0-9_-]+$/.test(key);
+  run(command: string, cwd: string): string | null {
+    try {
+      const output = cp.execSync(command, { cwd, stdio: 'pipe' });
+      return output.toString().trim();
+    } catch (error) {
+      this.logger.ErrorMsg(
+        `Error executing "${command}" in ${cwd}: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return null;
+    }
   }
 }
+
+class UpstreamHandler {
+  constructor(private executor: CommandExecutor, private logger: ConsoleLogger) { }
+
+  setUpstream(cwd: string): void {
+    const branch = this.executor.run('git rev-parse --abbrev-ref HEAD', cwd);
+    if (branch && branch !== 'HEAD') {
+      this.executor.run(`git branch --set-upstream-to=origin/${branch} ${branch}`, cwd);
+    } else {
+      this.logger.WarningMsg('Unable to determine current branch; skipping upstream setup.');
+    }
+  }
+}
+
+class RepositoryPullerHandler {
+  constructor(private executor: CommandExecutor, private logger: ConsoleLogger) { }
+
+  pull(cwd: string): boolean {
+    const result = this.executor.run('git pull', cwd);
+    if (result === null) {
+      this.logger.WarningMsg(`Failed to pull updates in ${cwd}`);
+      return false;
+    }
+    return true;
+  }
+}
+
+class RepositoryPusherHandler {
+  constructor(private executor: CommandExecutor, private logger: ConsoleLogger) { }
+
+  push(cwd: string): void {
+    const result = this.executor.run('git push', cwd);
+    if (result === null) {
+      this.logger.WarningMsg(`Failed to push updates in ${cwd}`);
+    }
+  }
+}
+
+class RepositoryCommitterHandler {
+  constructor(private executor: CommandExecutor, private logger: ConsoleLogger) { }
+
+  hasChanges(cwd: string): boolean {
+    return Boolean(this.executor.run('git status --porcelain', cwd));
+  }
+
+  commit(cwd: string, message?: string): void {
+    if (!this.hasChanges(cwd)) {
+      this.logger.ErrorMsg('No local changes to commit.');
+      return;
+    }
+    this.executor.run('git add .', cwd);
+    const timestamp = new Date().toISOString();
+    const commitMessage = message || `🤖Auto commit🤖 at ${timestamp}`;
+    const result = this.executor.run(`git commit -m "${commitMessage}"`, cwd);
+    if (result === null) {
+      this.logger.WarningMsg(`Commit failed in ${cwd}`);
+    }
+  }
+}
+
+class PeriodicSyncManager {
+  private puller: RepositoryPullerHandler;
+  private committer: RepositoryCommitterHandler;
+  private pusher: RepositoryPusherHandler;
+  private upstreamManager: UpstreamHandler;
+
+  constructor(private _executor: CommandExecutor, private intervalSeconds: number, private logger: ConsoleLogger) {
+    this.puller = new RepositoryPullerHandler(this._executor, logger);
+    this.committer = new RepositoryCommitterHandler(this._executor, logger);
+    this.pusher = new RepositoryPusherHandler(this._executor, logger);
+    this.upstreamManager = new UpstreamHandler(this._executor, logger);
+  }
+
+  private checkAccess(cwd: string, mode: number, errorMsg: string): boolean {
+    try {
+      fs.accessSync(cwd, mode);
+      return true;
+    } catch (error) {
+      this.logger.ErrorMsg(`${errorMsg}: ${cwd}`);
+      return false;
+    }
+  }
+
+  private syncOnce(cwd: string): void {
+    this.logger.LogMsg(`Syncing repository at: ${cwd}`);
+
+    if (!this.checkAccess(cwd, fs.constants.W_OK, 'No write access for directory')) {
+      this.logger.WarningMsg(`Skipping sync for ${cwd} due to write permission issues.`);
+      return;
+    }
+    if (!this.checkAccess(cwd, fs.constants.R_OK, 'No read access for directory')) {
+      this.logger.WarningMsg(`Skipping sync for ${cwd} due to read permission issues.`);
+      return;
+    }
+
+    this.upstreamManager.setUpstream(cwd);
+
+    if (!this.puller.pull(cwd)) {
+      return;
+    }
+
+    if (this.committer.hasChanges(cwd)) {
+      this.committer.commit(cwd);
+      this.pusher.push(cwd);
+    } else {
+      this.logger.LogMsg('No local changes detected.');
+    }
+  }
+
+  scheduleSync(cwd: string): void {
+    this.syncOnce(cwd);
+    setInterval(() => {
+      this.syncOnce(cwd);
+    }, this.intervalSeconds * 1000);
+  }
+}
+
+@Injectable()
+export class AutoSyncService {
+  private repoPaths: string[] = [];
+  private readonly logger: ConsoleLogger;
+  private readonly executor: CommandExecutor;
+  private readonly periodicSyncManager: PeriodicSyncManager;
+
+  constructor(private readonly loggerDep: ConsoleLogger) {
+    // Get current file details to identify the default Git repository root.
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const defaultRepo = findGitRoot(__dirname);
+    this.repoPaths.push(defaultRepo);
+
+    this.logger = this.loggerDep;
+    this.executor = new CommandExecutor(this.logger);
+    // Set the sync interval to 30 seconds, adjust as needed.
+    this.periodicSyncManager = new PeriodicSyncManager(this.executor, 30, this.logger);
+    this.logger.LogMsg(`AutoSyncService initialized. Default repo: ${defaultRepo}`);
+  }
+
+  start(): void {
+    for (const repoPath of this.repoPaths) {
+      this.periodicSyncManager.scheduleSync(repoPath);
+    }
+  }
+
+  addRepository(repoPath: string): void {
+    this.repoPaths.push(repoPath);
+  }
+}
+
+
+//==========================================================
+//==========================================================
+//==========================================================
+

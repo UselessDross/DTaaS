@@ -20,3 +20,6 @@ git-repos: #only used in git mod
         - common:
                   repo-url: "https://gitlab.com/dtaas/common.git"
                   #   http-token: "xxxx"
+# dismantly the auto-sync folder and directly hard code the feature into the git-file and implement it into the git-module.
+# lets make sure it is working and the testing.
+# atomize the auto-sinc into different functions/classes that focuses on one of the features. one for git pull, one for git commit, and one for git push. and one for periodic actions.
