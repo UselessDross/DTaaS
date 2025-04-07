@@ -6,7 +6,7 @@ import * as os from 'os';
 import { execSync } from 'child_process';
 import { ConsoleLogger } from '../../src/util/logger.js';
 
-jest.setTimeout(10000); // Extend timeout to ensure async operations complete
+jest.setTimeout(10000);
 
 describe('AutoSyncService', () => {
     let tempRepoDir;
@@ -43,17 +43,14 @@ describe('AutoSyncService', () => {
     });
 
     it('logs no changes message when repository is clean', async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
         autoSyncService.start();
         await new Promise(resolve => setTimeout(resolve, 3000));
 
-        const logCalls = testLogger.LogMsg.mock.calls.flat();
-        const found = logCalls.some(msg => msg.includes('No local changes detected'));
+        const found = testLogger.LogMsg.mock.calls.flat().some(msg => msg.includes('No local changes detected'));
         expect(found).toBe(true);
     });
 
     it('commits and pushes changes when local modifications are made', async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
         await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Modified content');
 
         autoSyncService.start();
@@ -72,8 +69,7 @@ describe('AutoSyncService', () => {
         autoSyncService.start();
         await new Promise(resolve => setTimeout(resolve, 3000));
 
-        const errorCalls = testLogger.ErrorMsg.mock.calls.flat();
-        const hasError = errorCalls.some(msg => msg.includes('Error executing'));
+        const hasError = testLogger.ErrorMsg.mock.calls.flat().some(msg => msg.includes('Error executing'));
         expect(hasError).toBe(true);
     });
 });
