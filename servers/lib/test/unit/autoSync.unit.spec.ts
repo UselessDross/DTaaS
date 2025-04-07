@@ -26,9 +26,9 @@ describe('AutoSyncService', () => {
         execSync('git remote add origin https://example.com/fake.git', { cwd: tempRepoDir });
 
         testLogger = new ConsoleLogger();
-        jest.spyOn(testLogger, 'LogMsg');
-        jest.spyOn(testLogger, 'ErrorMsg');
-        jest.spyOn(testLogger, 'WarningMsg');
+        jest.spyOn(testLogger, 'LogMsg').mockImplementation(() => { });
+        jest.spyOn(testLogger, 'ErrorMsg').mockImplementation(() => { });
+        jest.spyOn(testLogger, 'WarningMsg').mockImplementation(() => { });
 
         autoSyncService = new AutoSyncService(testLogger);
         autoSyncService.addRepository(tempRepoDir);
@@ -38,15 +38,18 @@ describe('AutoSyncService', () => {
         if (tempRepoDir) {
             await fs.rm(tempRepoDir, { recursive: true, force: true });
         }
-        autoSyncService.stop();
+        if (typeof autoSyncService.shutdown === 'function') {
+            await autoSyncService.shutdown();
+        }
         jest.restoreAllMocks();
     });
 
     it('logs no changes message when repository is clean', async () => {
         autoSyncService.start();
-        await new Promise(resolve => setTimeout(resolve, 3000));
 
-        const found = testLogger.LogMsg.mock.calls.flat().some(msg => msg.includes('No local changes detected'));
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const found = testLogger.LogMsg.mock.calls.flat().some(call => call[0].includes('No local changes detected'));
         expect(found).toBe(true);
     });
 
@@ -54,9 +57,10 @@ describe('AutoSyncService', () => {
         await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Modified content');
 
         autoSyncService.start();
-        await new Promise(resolve => setTimeout(resolve, 3000));
 
-        const logCalls = testLogger.LogMsg.mock.calls.flat();
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const logCalls = testLogger.LogMsg.mock.calls.flat().map(call => call[0]);
         const hasSync = logCalls.some(msg => msg.includes('Syncing repository'));
         const noChanges = logCalls.some(msg => msg.includes('No local changes detected'));
         expect(hasSync).toBe(true);
@@ -67,9 +71,10 @@ describe('AutoSyncService', () => {
         await fs.rm(path.join(tempRepoDir, '.git'), { recursive: true, force: true });
 
         autoSyncService.start();
-        await new Promise(resolve => setTimeout(resolve, 3000));
 
-        const hasError = testLogger.ErrorMsg.mock.calls.flat().some(msg => msg.includes('Error executing'));
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const hasError = testLogger.ErrorMsg.mock.calls.flat().some(call => call[0].includes('Error executing'));
         expect(hasError).toBe(true);
     });
 });
