@@ -1,94 +1,121 @@
+// test/unit/autoSync.unit.spec.ts
+
 import { describe, it, beforeEach, afterEach, expect, jest } from '@jest/globals';
 import { AutoSyncService } from '../../src/files/git/git-files.service.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
-import { ConsoleLogger } from '../../src/util/logger.js';
+import { mkdtempSync, rmSync } from 'fs';
+// import { fileURLToPath } from 'url';
 
-describe('AutoSyncService', () => {
+// Define a mock logger to capture log messages.
+class MockLogger {
+    public messages: string[] = [];
+    LogMsg(message: string): void {
+        this.messages.push(`MSG: ${message}`);
+        console.log(`MSG: ${message}`);
+    }
+    ErrorMsg(message: string): void {
+        this.messages.push(`ERR: ${message}`);
+        console.error(`ERR: ${message}`);
+    }
+    WarningMsg(message: string): void {
+        this.messages.push(`WRN: ${message}`);
+        console.warn(`WRN: ${message}`);
+    }
+}
+
+describe('AutoSyncService (Real Git Integration)', () => {
     let tempRepoDir: string;
     let autoSyncService: AutoSyncService;
-    let testLogger: ConsoleLogger;
+    let mockLogger: MockLogger;
+    const originalSetInterval = global.setInterval;
+    let intervalHandles: NodeJS.Timeout[] = [];
+
+    // Increase timeout for integration tests
+    jest.setTimeout(30000);
 
     beforeEach(async () => {
-        // Create and initialize a real Git repo for testing
-        tempRepoDir = await fs.mkdtemp(path.join(os.tmpdir(), 'autoSync-test-'));
-        await fs.mkdir(path.join(tempRepoDir, '.git'));
+        // Create a temporary directory for our dummy repository.
+        tempRepoDir = mkdtempSync(path.join(os.tmpdir(), 'autoSync-test-'));
 
-        // Initialize git repo with a commit
+        // Initialize the Git repository in the temporary directory.
         execSync('git init', { cwd: tempRepoDir });
-        execSync('git config --global user.email "test@example.com"', { cwd: tempRepoDir });
-        execSync('git config --global user.name "Test User"', { cwd: tempRepoDir });
-        await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Initial content');
+        // Configure Git user if not set globally.
+        execSync('git config user.email "test@example.com"', { cwd: tempRepoDir });
+        execSync('git config user.name "Test User"', { cwd: tempRepoDir });
+        // Create an initial file and commit it.
+        await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Initial content\n');
         execSync('git add .', { cwd: tempRepoDir });
         execSync('git commit -m "Initial commit"', { cwd: tempRepoDir });
-
-        // Create remote repo simulation
+        // (Optional) Simulate a remote by adding a fake remote.
         execSync('git remote add origin https://example.com/fake.git', { cwd: tempRepoDir });
 
-        // Setup test logger and service
-        testLogger = new ConsoleLogger();
-        jest.spyOn(testLogger, 'LogMsg');
-        jest.spyOn(testLogger, 'ErrorMsg');
-        jest.spyOn(testLogger, 'WarningMsg');
+        // Setup the mock logger.
+        mockLogger = new MockLogger();
 
-        autoSyncService = new AutoSyncService(testLogger);
+        // Instantiate AutoSyncService with the mock logger.
+        autoSyncService = new AutoSyncService(mockLogger as any);
+        // Add our temporary repo to the service.
         autoSyncService.addRepository(tempRepoDir);
+
+        // Spy on setInterval to capture scheduled intervals.
+        jest.spyOn(global, 'setInterval').mockImplementation((fn: TimerHandler, ms: number, ...args: any[]): NodeJS.Timeout => {
+            const handle = originalSetInterval(fn, ms, ...args) as unknown as NodeJS.Timeout;
+            intervalHandles.push(handle);
+            return handle;
+        });
     });
 
     afterEach(async () => {
-        if (tempRepoDir) {
-            await fs.rm(tempRepoDir, { recursive: true, force: true });
-        }
+        // Clear scheduled intervals.
+        intervalHandles.forEach(handle => clearInterval(handle));
+        intervalHandles = [];
         jest.restoreAllMocks();
+        // Remove the temporary repository directory.
+        await fs.rm(tempRepoDir, { recursive: true, force: true });
     });
 
     it('should detect no changes when the repository is clean', async () => {
-        // Start auto sync
         autoSyncService.start();
-
-        // Wait for sync cycle
+        // Wait for one sync cycle.
         await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // Verify logger was called with expected message
-        expect(testLogger.LogMsg).toHaveBeenCalledWith(
-            expect.stringContaining('No local changes detected')
-        );
+        // Run 'git status' to confirm no pending changes.
+        const status = execSync('git status --porcelain', { cwd: tempRepoDir }).toString().trim();
+        expect(status).toBe('');
+        // Check log messages for indication that no changes were detected.
+        const logs = mockLogger.messages.join('\n');
+        expect(logs).toMatch(/No local changes to commit/);
     });
 
     it('should commit and push changes when local modifications are made', async () => {
-        // Make a change to the repo
-        await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Modified content');
-
-        // Start auto sync
+        // Modify the file to simulate uncommitted changes.
+        await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Modified content\n');
+        // Confirm there are changes.
+        const statusBefore = execSync('git status --porcelain', { cwd: tempRepoDir }).toString().trim();
+        expect(statusBefore).not.toBe('');
         autoSyncService.start();
-
-        // Wait for sync cycle
+        // Wait for one sync cycle.
         await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // Verify logger was called with expected messages
-        expect(testLogger.LogMsg).toHaveBeenCalledWith(
-            expect.stringContaining('Adding changes')
-        );
-        expect(testLogger.LogMsg).toHaveBeenCalledWith(
-            expect.stringContaining('Pushing changes')
-        );
+        // After sync, status should be empty.
+        const statusAfter = execSync('git status --porcelain', { cwd: tempRepoDir }).toString().trim();
+        expect(statusAfter).toBe('');
+        // Check logs for commit and push operations.
+        const logs = mockLogger.messages.join('\n');
+        expect(logs).toMatch(/Adding changes/);
+        expect(logs).toMatch(/Committing changes with message:/);
+        expect(logs).toMatch(/Pushing changes/);
     });
 
     it('should handle errors gracefully when Git commands fail', async () => {
-        // Break the Git repo to simulate failure
-        await fs.rm(path.join(tempRepoDir, '.git'), { recursive: true, force: true });
-
-        // Start auto sync
+        // Remove the .git directory to force Git command failures.
+        rmSync(path.join(tempRepoDir, '.git'), { recursive: true, force: true });
         autoSyncService.start();
-
-        // Wait for sync cycle
+        // Wait for one sync cycle.
         await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // Verify error was logged
-        expect(testLogger.ErrorMsg).toHaveBeenCalledWith(
-            expect.stringContaining('Error executing')
-        );
+        // Check log messages for error indications.
+        const logs = mockLogger.messages.join('\n');
+        expect(logs).toMatch(/Error running command: "git pull"/);
     });
 });
