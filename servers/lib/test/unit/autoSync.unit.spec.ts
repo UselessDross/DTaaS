@@ -36,6 +36,7 @@ describe('AutoSyncService', () => {
         if (tempRepoDir) {
             await fs.rm(tempRepoDir, { recursive: true, force: true });
         }
+        autoSyncService.stop();
         jest.restoreAllMocks();
     });
 
