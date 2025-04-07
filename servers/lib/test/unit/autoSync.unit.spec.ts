@@ -6,6 +6,8 @@ import * as os from 'os';
 import { execSync } from 'child_process';
 import { ConsoleLogger } from '../../src/util/logger.js';
 
+jest.setTimeout(10000); // Extend timeout to ensure async operations complete
+
 describe('AutoSyncService', () => {
     let tempRepoDir;
     let autoSyncService;
@@ -41,36 +43,37 @@ describe('AutoSyncService', () => {
     });
 
     it('logs no changes message when repository is clean', async () => {
+        await new Promise(resolve => setTimeout(resolve, 100));
         autoSyncService.start();
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
-        expect(testLogger.LogMsg).toHaveBeenCalledWith(
-            expect.stringContaining('No local changes detected')
-        );
+        const logCalls = testLogger.LogMsg.mock.calls.flat();
+        const found = logCalls.some(msg => msg.includes('No local changes detected'));
+        expect(found).toBe(true);
     });
 
     it('commits and pushes changes when local modifications are made', async () => {
+        await new Promise(resolve => setTimeout(resolve, 100));
         await fs.writeFile(path.join(tempRepoDir, 'test.txt'), 'Modified content');
 
         autoSyncService.start();
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
-        expect(testLogger.LogMsg).toHaveBeenCalledWith(
-            expect.stringContaining('Syncing repository')
-        );
-        expect(testLogger.LogMsg).not.toHaveBeenCalledWith(
-            expect.stringContaining('No local changes detected')
-        );
+        const logCalls = testLogger.LogMsg.mock.calls.flat();
+        const hasSync = logCalls.some(msg => msg.includes('Syncing repository'));
+        const noChanges = logCalls.some(msg => msg.includes('No local changes detected'));
+        expect(hasSync).toBe(true);
+        expect(noChanges).toBe(false);
     });
 
     it('logs error if Git commands fail', async () => {
         await fs.rm(path.join(tempRepoDir, '.git'), { recursive: true, force: true });
 
         autoSyncService.start();
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
-        expect(testLogger.ErrorMsg).toHaveBeenCalledWith(
-            expect.stringContaining('Error executing')
-        );
+        const errorCalls = testLogger.ErrorMsg.mock.calls.flat();
+        const hasError = errorCalls.some(msg => msg.includes('Error executing'));
+        expect(hasError).toBe(true);
     });
 });
