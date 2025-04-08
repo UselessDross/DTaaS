@@ -9,7 +9,7 @@ jest.unstable_mockModule('child_process', () => ({
 // The 'cp' import is removed as it is not used.
 
 // Now import the AutoSync and RunCommand classes (they pick up the mocked cp).
-import { RunCommand } from '../../src/auto-sync/auto-sync.service.js';
+import { RunCommand } from '../../src/files/git/run-command.service';
 
 jest.mock('../../src/util/logger', () => {
     return {
