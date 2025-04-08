@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import GitFilesService from './git-files.service.js';
+import GitFilesService, { AutoSyncService } from './git-files.service.js';
 import LocalFilesService from '../local/local-files.service.js';
 
 @Module({
-  providers: [GitFilesService, LocalFilesService],
-  exports: [GitFilesService],
+  providers: [GitFilesService, LocalFilesService, AutoSyncService],
+  exports: [GitFilesService, AutoSyncService],
 })
 export class GitFilesModule {}
