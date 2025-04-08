@@ -10,10 +10,10 @@ import { ConsoleLogger } from '../../util/logger.js';
 import Config from '../../config/config.service.js';
 import { Project } from 'src/types.js';
 import * as git from 'isomorphic-git';
+import * as cp from 'child_process'; // replaced: import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as cp from 'child_process';
 
 @Injectable()
 export default class GitFilesService implements IFilesService {
@@ -81,6 +81,7 @@ class RunCommand {
   public runCommand(command: string, cwd: string): string | null {
     this.logger.LogMsg(`Running command: "${command}" in directory: ${cwd}`);
     try {
+      // replaced execSync with cp.execSync
       const output = cp.execSync(command, { cwd, stdio: 'pipe' });
       const outStr = output.toString().trim();
       this.logger.LogMsg(`Command output: ${outStr}`);
@@ -120,6 +121,7 @@ class AutoSync {
   private runCommand(command: string, cwd: string): string | null {
     this.logger.LogMsg(`Running command: "${command}" in directory: ${cwd}`);
     try {
+      // replaced execSync with cp.execSync
       const output = cp.execSync(command, { cwd, stdio: 'pipe' });
       const outStr = output.toString().trim();
       this.logger.LogMsg(`Command output: ${outStr}`);
