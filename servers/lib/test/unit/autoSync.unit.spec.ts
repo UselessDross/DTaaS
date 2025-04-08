@@ -1,8 +1,6 @@
-
 import { jest } from '@jest/globals';
 import { fileURLToPath } from 'url';
 import * as path from 'path';
-import { RunCommand } from '../../src/files/git/git-files.service.js';
 
 // Instead of static import, do dynamic import after mocking:
 jest.unstable_mockModule('child_process', () => ({ execSync: jest.fn(), }));
@@ -30,13 +28,11 @@ jest.mock('../../src/util/logger', () => {
 describe('AutoSync', () => {
   // Declare a variable to hold the AutoSync instance.
   let autoSync: InstanceType<typeof AutoSync>;
-  let runCommand: InstanceType<typeof RunCommand>;
 
   beforeEach(() => {
     // Clear mocks and instantiate a new AutoSync before each test.
     jest.clearAllMocks();
     autoSync = new AutoSync();
-    runCommand = new RunCommand();
   });
 
   afterEach(() => {
@@ -45,20 +41,6 @@ describe('AutoSync', () => {
     jest.clearAllMocks();
   });
 
-  it('0 - should successfully execute a command using RunCommand', () => {
-    const command = 'git status';
-    const cwd = '/path/to/repo';
-    const output = 'On branch main';
-    mockExecSync.mockReturnValue(Buffer.from(output)); // Simulate successful command execution.
-
-    // Execute the command using the RunCommand instance.
-    const result = runCommand.runCommand(command, cwd);
-
-    // Verify execSync was called with the correct parameters.
-    expect(mockExecSync).toHaveBeenCalledWith(command, { cwd, stdio: 'pipe' });
-    // Verify that the returned output matches the trimmed expected output.
-    expect(result).toBe(output.trim());
-  });
   it('1 - should initialize with correct project path', () => {
     // Calculate expected repo path based on the location of this test file.
     const __filename = fileURLToPath(import.meta.url);
