@@ -1,6 +1,7 @@
 // src/util/autoSync.ts
 
-import * as cp from 'child_process'; // Import entire child_process as cp
+import * as cp from 'child_process';
+
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { ConsoleLogger } from './logger.js';
@@ -99,11 +100,3 @@ class AutoSync {
 }
 
 export { AutoSync };
-
-
-/*
-
-look at nest js feature strucotr. and then follow it.
-
-
-*/

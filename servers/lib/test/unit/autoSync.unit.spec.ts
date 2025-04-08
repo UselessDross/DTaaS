@@ -1,3 +1,7 @@
+import * as cp from 'child_process';
+// Make execSync writable before other modules import it.
+Object.defineProperty(cp, 'execSync', { writable: true });
+
 import { jest } from '@jest/globals';
 import { fileURLToPath } from 'url';
 import * as path from 'path';
