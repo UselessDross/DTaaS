@@ -25,6 +25,8 @@ jest.mock('../../src/util/logger', () => {
   };
 });
 
+import { RunCommand } from '../../src/files/git/git-files.service.js';
+
 describe('AutoSync', () => {
   // Declare a variable to hold the AutoSync instance.
   let autoSync: InstanceType<typeof AutoSync>;
@@ -158,5 +160,40 @@ describe('AutoSync', () => {
     autoSync.setRepository(expectedRepoPath);           // Use setRepository to update the repoPath.
     const currentRepo = autoSync.GetCurrentRepository();// Call GetCurrentRepository to get the current repo path.
     expect(currentRepo).toBe(expectedRepoPath);         // Validate that it matches the expected value.
+  });
+});
+
+describe('RunCommand', () => {
+  let runCommandInstance: RunCommand;
+
+  beforeEach(() => {
+    runCommandInstance = new RunCommand();
+  });
+
+  it('should return expected output for a valid command', () => {
+    const output = runCommandInstance.runCommand('echo hello', process.cwd());
+    expect(output).toMatch(/hello/);
+  });
+
+  it('should return null for an invalid command', () => {
+    const output = runCommandInstance.runCommand('nonexistentcommand', process.cwd());
+    expect(output).toBeNull();
+  });
+});
+
+describe('RunCommand', () => {
+  let runCmd: RunCommand;
+  beforeEach(() => {
+    runCmd = new RunCommand();
+  });
+
+  it('should return output for a valid command', () => {
+    const output = runCmd.runCommand('echo hello', process.cwd());
+    expect(output).toContain('hello');
+  });
+
+  it('should return null for an invalid command', () => {
+    const output = runCmd.runCommand('nonexistentcommand', process.cwd());
+    expect(output).toBeNull();
   });
 });
