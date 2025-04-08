@@ -63,7 +63,7 @@ describe('AutoSync', () => {
     // Calculate expected repo path based on the location of this test file.
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    const expectedPath = path.resolve(__dirname, '../../../../..').replace(/[\\\/]+$/, '');
+    const expectedPath = path.resolve(__dirname, '../../../..').replace(/[\\\/]+$/, '');
     expect(autoSync['repoPath'].replace(/[\\\/]+$/, '')).toBe(expectedPath);  // Check that the AutoSync instance's repoPath (private) matches the expected path.
   });
 
