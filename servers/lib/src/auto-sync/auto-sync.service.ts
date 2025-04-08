@@ -3,9 +3,9 @@
 import * as cp from 'child_process'; // Import entire child_process as cp
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { ConsoleLogger } from './logger.js';
+import { ConsoleLogger } from '../util/logger.js'; // corrected import path
 
-class AutoSync {
+export class AutoSync {
     private repoPath: string | null = null;
     private readonly logger: ConsoleLogger;
 
@@ -94,16 +94,4 @@ class AutoSync {
             await this.autoSync();
         }, intervalSeconds * 1000);
     }
-
-
 }
-
-export { AutoSync };
-
-
-/*
-
-look at nest js feature strucotr. and then follow it.
-
-
-*/

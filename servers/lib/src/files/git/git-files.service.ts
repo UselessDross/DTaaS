@@ -10,10 +10,10 @@ import { ConsoleLogger } from '../../util/logger.js';
 import Config from '../../config/config.service.js';
 import { Project } from 'src/types.js';
 import * as git from 'isomorphic-git';
-import * as cp from 'child_process';
 import { fileURLToPath } from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as cp from 'child_process';
 
 @Injectable()
 export default class GitFilesService implements IFilesService {
