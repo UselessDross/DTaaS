@@ -74,6 +74,7 @@ export default class GitFilesService implements IFilesService {
 
 export interface IRunCommand { runCommand(command: string, cwd: string): string | null; }
 export interface ICheckCommitHandler { checkOrCommit(): boolean; }
+export interface IPushHandler { push(): boolean; }
 export interface IPullHandler { pull(): boolean; }
 
 class RunCommand implements IRunCommand {
@@ -114,6 +115,29 @@ class PullHandler implements IPullHandler {
       return false;
     }
     return this.runCommand.runCommand('git pull', this.repoPath) !== null;
+  }
+}
+
+
+
+class PushHandler implements IPushHandler {
+  private repoPath: string | null = null;
+  private readonly logger: ConsoleLogger;
+  private runCommand: IRunCommand;
+
+  constructor(repoPath_: string, runCommand_?: IRunCommand) {
+    this.repoPath = repoPath_;
+    this.logger = new ConsoleLogger();
+    this.runCommand = runCommand_ || new RunCommand();
+  }
+
+  public push(): boolean {
+    this.logger.LogMsg('Pushing changes to remote...');
+    if (!this.repoPath) {
+      this.logger.ErrorMsg('In PushHandler instance: No repository path set.');
+      return false;
+    }
+    return this.runCommand.runCommand('git push', this.repoPath) !== null;
   }
 }
 
@@ -326,7 +350,7 @@ class AutoSync {
 
 }
 
-export { AutoSync, RunCommand, CheckCommitHandler, PullHandler };
+export { AutoSync, RunCommand, CheckCommitHandler, PullHandler, PushHandler };
 
 
 
