@@ -72,8 +72,8 @@ export default class GitFilesService implements IFilesService {
 //==========================================================
 //==========================================================
 
-
 export interface IRunCommand { runCommand(command: string, cwd: string): string | null; }
+export interface ICheckCommitHandler { checkOrCommit(): boolean; }
 export interface IPullHandler { pull(): boolean; }
 
 class RunCommand implements IRunCommand {
@@ -117,7 +117,70 @@ class PullHandler implements IPullHandler {
   }
 }
 
+
+class CheckCommitHandler implements ICheckCommitHandler {
+  private repoPath: string | null = null;
+  private readonly logger: ConsoleLogger;
+  private runCommand: IRunCommand;
+
+  constructor(repoPath_: string, runCommand_?: IRunCommand) {
+    this.repoPath = repoPath_;
+    this.logger = new ConsoleLogger();
+    this.runCommand = runCommand_ || new RunCommand();
+  }
+
+  public checkOrCommit(): boolean {
+    const timestamp = new Date().toISOString();
+    this.logger.LogMsg('Checking for changes...');
+    if (!this.repoPath) {
+      this.logger.ErrorMsg('In CheckCommitHandler instance: No repository path set.');
+      return false;
+    }
+    const status = this.runCommand.runCommand('git status --porcelain', this.repoPath);
+    if (status === null) {
+      this.logger.ErrorMsg('Failed to retrieve git status. Command returned null.');
+      return false;
+    }
+    if (typeof status !== 'string' || !/^[ MADRCU?!]+/.test(status.trim())) {
+      this.logger.ErrorMsg('Unexpected git status output format.');
+      return false;
+    }
+    if (!status) {
+      const commitResult = this.runCommand.runCommand(`git commit -m "Auto commit at ${timestamp}"`, this.repoPath);
+      if (!commitResult) {
+        this.logger.ErrorMsg('Failed to commit changes. Please check the repository configuration or staged changes.');
+        return false;
+      }
+      return false;
+    } else {
+      this.logger.LogMsg('Local changes detected. Proceeding to commit.');
+      this.runCommand.runCommand('git add .', this.repoPath);
+      this.logger.LogMsg(`Committing changes with message: "Auto commit at ${timestamp}"`);
+      this.runCommand.runCommand(`git commit -m "Auto commit at ${timestamp}"`, this.repoPath);
+      this.logger.LogMsg('Ready to push changes...');
+      return true;
+    }
+  }
+}
+
+
 /*
+    this.runCommand('git add -u', this.repoPath);
+
+    // 2. Check if local changes exist
+
+
+    // 3. Commit & push
+    this.logger.LogMsg('Adding changes...');
+    this.runCommand('git add .', this.repoPath);
+
+    const timestamp = new Date().toISOString();
+    this.logger.LogMsg(`Committing changes with message: "Auto commit at ${timestamp}"`);
+    this.runCommand(`git commit -m "Auto commit at ${timestamp}"`, this.repoPath);
+
+
+
+
 
 ─ ━ │ ┃ ┄ ┅ ┆ ┇ ┈ ┉ ┊ ┋ ┌ ┍ ┎ ┏ ┐ ┑ ┒ ┓ └ ┕ ┖ ┗ ┘ ┙ ┚ ┛ 
 ├ ┝ ┞ ┟ ┠ ┡ ┢ ┣ ┤ ┥ ┦ ┧ ┨ ┩ ┪ ┫ ┬ ┭ ┮ ┯ ┰ ┱ ┲ ┳ ┴ ┵ ┶ ┷ -_
@@ -263,7 +326,7 @@ class AutoSync {
 
 }
 
-export { AutoSync, RunCommand, PullHandler };
+export { AutoSync, RunCommand, CheckCommitHandler, PullHandler };
 
 
 
