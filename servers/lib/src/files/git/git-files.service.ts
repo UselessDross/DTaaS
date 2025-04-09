@@ -73,7 +73,11 @@ export default class GitFilesService implements IFilesService {
 //==========================================================
 
 
-class RunCommand {
+export interface IRunCommand {
+  runCommand(command: string, cwd: string): string | null;
+}
+
+class RunCommand implements IRunCommand {
   private readonly logger: ConsoleLogger;
   constructor() {
     this.logger = new ConsoleLogger();
@@ -92,6 +96,57 @@ class RunCommand {
     }
   }
 }
+
+
+/*
+
+─ ━ │ ┃ ┄ ┅ ┆ ┇ ┈ ┉ ┊ ┋ ┌ ┍ ┎ ┏ ┐ ┑ ┒ ┓ └ ┕ ┖ ┗ ┘ ┙ ┚ ┛ 
+├ ┝ ┞ ┟ ┠ ┡ ┢ ┣ ┤ ┥ ┦ ┧ ┨ ┩ ┪ ┫ ┬ ┭ ┮ ┯ ┰ ┱ ┲ ┳ ┴ ┵ ┶ ┷ -_
+┸ ┹ ┺ ┻ ┼ ┽ ┾ ┿ ╀ ╁ ╂ ╃ ╄ ╅ ╆ ╇ ╈ ╉ ╊ ╋
+╴╵╶╷━╸╹━╺━╻╼╽╾╿ 
+╟  ╤ ╧ ╟╢ ▔━▁
+═₌₌                                        ╤═╤ ┬ ┴
+   ║ ╒  ╓ ╔ ╕ ╖  ╗ ╘ ╙ ╚ ╛ ╜ ╝ ╞ ┒┏	╟ ─╰─╯
+
+╱ ╲ ╳ ╴ ╵ ╶ ╷ ╸ ╹ ╺ ╻ ╼ ╽ ╾ ╿ ─ ━ ┊ ┋ ┌ ┍ ┎ ┏ ┐ ┑ ┒ ┓ ╭─┬─╮
+╔ ╗ ╚ ╝ ╠ ╣ ╦ ╧ ╨ ╤ ╥ ╙ ╘ ╓ ╖ ╒ ╕
+╔═╗ ║ ╚═╝ ╠═╣ ╦ ╩ ╠═╣ ╦ ╩ ╠═╣ ╦ ╩
+╔═╗ ║ ╚═╝ ╠═╣ ╦ ╩ ╠═╣ ╦ ╩ ╠═╣ ╦ ╩
+
+
+┏━━━━━━━━━━━━━━┓  ┏━━━━━━━━━━━━━━┓  ┏━━━━━━━━━━━━━━━┓  ┏━━━━━━━━━━━━━━━━┓
+┃ <Interface>  ┃  ┃ <Interface>  ┃  ┃ <Interface>   ┃  ┃ <Interface>    ┃
+┃ IPullHandler ┃  ┃ IPushHandler ┃  ┃ ICheckHandler ┃  ┃ ICommitHandler ┃
+┗━━━━━━━━━━━━━━┛  ┗━━━━━━━━━━━━━━┛  ┗━━━━━━━━━━━━━━━┛  ┗━━━━━━━━━━━━━━━━┛
+       Δ                 Δ                 Δ                  Δ
+       ╵                 ╵                 ╵                  ╵
+       ╵                 ╵                 ╵                  ╵
+       ╵                 ╵                 ╵                  ╵
+┏━━━━━━┷━━━━━━━┓  ┏━━━━━━┷━━━━━━━┓  ┏━━━━━━┷━━━━━━━━┓  ┏━━━━━━┷━━━━━━━━━┓
+┃    <Class>   ┃  ┃    <Class>   ┃  ┃    <Class>    ┃  ┃    <Class>     ┃
+┃  PullHandler ┃  ┃  PushHandler ┃  ┃  CheckHandler ┃  ┃  CommitHandler ┃
+┗━━━━━━┯━━━━━━━┛  ┗━━━━━━┯━━━━━━━┛  ┗━━━━━━┯━━━━━━━━┛  ┗━━━━━━┯━━━━━━━━━┛
+       │                 │                 │                  │
+       │                 ╰────────┬────────╯                  │
+       ╰──────────────────────────┼───────────────────────────╯
+                                  │
+                                  ↓
+                           ┏━━━━━━━━━━━━━┓                 
+                           ┃ <Interface> ┃                 
+                           ┃ IRunCommand ┃                 
+                           ┗━━━━━━━━━━━━━┛                 
+                                  Δ
+                                  ╵
+                                  ╵
+                                  ╵
+                           ┏━━━━━━┷━━━━━━┓      
+                           ┃   <class>   ┃      
+                           ┃  RunCommand ┃      
+                           ┗━━━━━━━━━━━━━┛      
+
+*/
+
+
 
 
 class AutoSync {
@@ -130,6 +185,8 @@ class AutoSync {
       return null;
     }
   }
+
+
   private async autoSync(): Promise<void> {
     if (!this.repoPath) {
       this.logger.ErrorMsg('No repository set. Use setRepository() first.');
