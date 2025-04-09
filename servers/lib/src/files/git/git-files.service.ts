@@ -73,9 +73,8 @@ export default class GitFilesService implements IFilesService {
 //==========================================================
 
 
-export interface IRunCommand {
-  runCommand(command: string, cwd: string): string | null;
-}
+export interface IRunCommand { runCommand(command: string, cwd: string): string | null; }
+export interface IPullHandler { pull(): boolean; }
 
 class RunCommand implements IRunCommand {
   private readonly logger: ConsoleLogger;
@@ -97,6 +96,26 @@ class RunCommand implements IRunCommand {
   }
 }
 
+class PullHandler implements IPullHandler {
+  private repoPath: string | null = null;
+  private readonly logger: ConsoleLogger;
+  private runCommand: IRunCommand;
+
+  constructor(repoPath_: string, runCommand_?: IRunCommand) {
+    this.repoPath = repoPath_;
+    this.logger = new ConsoleLogger();
+    this.runCommand = runCommand_ || new RunCommand();
+  }
+
+  public pull(): boolean {
+    this.logger.LogMsg('Pulling latest changes...');
+    if (!this.repoPath) {
+      this.logger.ErrorMsg('In PullHandler instance: No repository path set.');
+      return false;
+    }
+    return this.runCommand.runCommand('git pull', this.repoPath) !== null;
+  }
+}
 
 /*
 
@@ -244,7 +263,7 @@ class AutoSync {
 
 }
 
-export { AutoSync, RunCommand };
+export { AutoSync, RunCommand, PullHandler };
 
 
 
