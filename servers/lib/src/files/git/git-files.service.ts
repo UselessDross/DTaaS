@@ -76,7 +76,59 @@ export interface IRunCommand { runCommand(command: string, cwd: string): string 
 export interface ICheckCommitHandler { checkOrCommit(): boolean; }
 export interface IPushHandler { push(): boolean; }
 export interface IPullHandler { pull(): boolean; }
+export interface IPeriodicHandler { schedulePeriodicSync(intervalSeconds: number): void; }
 
+class PeriodicHandler implements IPeriodicHandler {
+  private readonly logger: ConsoleLogger;
+  private repoPath: string | null = null;
+  private pullHandler: IPullHandler;
+  private pushHandler: IPushHandler;
+  private checkCommitHandler: ICheckCommitHandler;
+
+  constructor(repoPath: string, runCommand?: IRunCommand) {
+    this.repoPath = repoPath;
+    this.logger = new ConsoleLogger();
+    this.pullHandler = new PullHandler(repoPath, runCommand);
+    this.pushHandler = new PushHandler(repoPath, runCommand);
+    this.checkCommitHandler = new CheckCommitHandler(repoPath, runCommand);
+  }
+
+  private callPull(): boolean { return this.pullHandler.pull(); }
+  private callPush(): boolean { return this.pushHandler.push(); }
+  private callCheckCommit(): boolean { return this.checkCommitHandler.checkOrCommit(); }
+
+  public schedulePeriodicSync(intervalSeconds: number): void {
+    if (!this.repoPath) {
+      this.logger.ErrorMsg('No repository path set for PeriodicHandler.');
+      return;
+    }
+    console.log(`Scheduling periodic sync for repository updates every ${intervalSeconds} seconds.`);
+    let isSyncing = false;
+
+    const syncCycle = async () => {
+      if (isSyncing) {
+        this.logger.ErrorMsg('Sync already in progress. Skipping this cycle.');
+        return;
+      }
+      isSyncing = true;
+      console.log('─ ─ ─ ─ ─ Starting periodic sync cycle ─ ─ ─ ─ ─');
+      try {
+        const pulled = this.callPull();
+        if (pulled) {
+          const changesCommitted = this.callCheckCommit();
+          if (changesCommitted) { this.callPush(); }
+        } else {
+          this.logger.ErrorMsg('Pull failed. Skipping this commit and push cycle.');
+        }
+      } finally {
+        isSyncing = false;
+        console.log('─ ─ ─ ─ ─ Periodic sync cycle completed ─ ─ ─ ─ ─');
+      }
+    };
+
+    setInterval(syncCycle, intervalSeconds * 1000);
+  }
+}
 class RunCommand implements IRunCommand {
   private readonly logger: ConsoleLogger;
   constructor() {
@@ -96,7 +148,6 @@ class RunCommand implements IRunCommand {
     }
   }
 }
-
 class PullHandler implements IPullHandler {
   private repoPath: string | null = null;
   private readonly logger: ConsoleLogger;
@@ -114,12 +165,28 @@ class PullHandler implements IPullHandler {
       this.logger.ErrorMsg('In PullHandler instance: No repository path set.');
       return false;
     }
+    const status = this.runCommand.runCommand('git status --porcelain', this.repoPath);
+    if (status === null) {
+      this.logger.ErrorMsg('Failed to retrieve git status. Command returned null.');
+      return false;
+    }
+    if (typeof status !== 'string') {
+      this.logger.ErrorMsg('Unexpected git status output format.');
+      return false;
+    }
+    if (status.trim() !== "") {
+      // If there are any local changes, abort pull.
+      if (/^[ MADRCU?!]+$/.test(status.trim())) {
+        this.logger.ErrorMsg('Local changes exist. Aborting pull to avoid merge conflicts.');
+      } else {
+        this.logger.ErrorMsg('Unexpected git status output format.');
+      }
+      return false;
+    }
+    this.logger.LogMsg('Working directory clean. Proceeding with pull...');
     return this.runCommand.runCommand('git pull', this.repoPath) !== null;
   }
 }
-
-
-
 class PushHandler implements IPushHandler {
   private repoPath: string | null = null;
   private readonly logger: ConsoleLogger;
@@ -137,11 +204,26 @@ class PushHandler implements IPushHandler {
       this.logger.ErrorMsg('In PushHandler instance: No repository path set.');
       return false;
     }
+    const status = this.runCommand.runCommand('git status --porcelain', this.repoPath);
+    if (status === null) {
+      this.logger.ErrorMsg('Failed to retrieve git status. Command returned null.');
+      return false;
+    }
+    if (typeof status !== 'string') {
+      this.logger.ErrorMsg('Unexpected git status output format.');
+      return false;
+    }
+    if (status.trim() === "") {
+      this.logger.LogMsg('No local changes detected. Nothing to push.');
+      return true;
+    }
+    if (!/^[ MADRCU?!]+/.test(status.trim())) {
+      this.logger.ErrorMsg('Unexpected git status output format.');
+      return false;
+    }
     return this.runCommand.runCommand('git push', this.repoPath) !== null;
   }
 }
-
-
 class CheckCommitHandler implements ICheckCommitHandler {
   private repoPath: string | null = null;
   private readonly logger: ConsoleLogger;
@@ -170,12 +252,8 @@ class CheckCommitHandler implements ICheckCommitHandler {
       return false;
     }
     if (!status) {
-      const commitResult = this.runCommand.runCommand(`git commit -m "Auto commit at ${timestamp}"`, this.repoPath);
-      if (!commitResult) {
-        this.logger.ErrorMsg('Failed to commit changes. Please check the repository configuration or staged changes.');
-        return false;
-      }
-      return false;
+      this.logger.LogMsg('No local changes detected. Nothing to commit.');
+      return true;
     } else {
       this.logger.LogMsg('Local changes detected. Proceeding to commit.');
       this.runCommand.runCommand('git add .', this.repoPath);
@@ -350,7 +428,7 @@ class AutoSync {
 
 }
 
-export { AutoSync, RunCommand, CheckCommitHandler, PullHandler, PushHandler };
+export { AutoSync, RunCommand, CheckCommitHandler, PullHandler, PushHandler, PeriodicHandler };
 
 
 
