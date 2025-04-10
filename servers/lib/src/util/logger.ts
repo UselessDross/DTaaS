@@ -32,7 +32,8 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
         const hour = _date.getHours().toString().padStart(2, '0');
         const minute = _date.getMinutes().toString().padStart(2, '0');
         const second = _date.getSeconds().toString().padStart(2, '0');
-        const timestamp = `${year}.${month}.${day}|${hour}:${minute}:${second}`;
+        const milisecond = _date.getMilliseconds().toString().padStart(1, '0');
+        const timestamp = `${year}.${month}.${day}|${hour}:${minute}:${second}:${milisecond}`;
 
         // Build prefix and indent so that any wrapped or existing newlines align.
         const prefixText = `${MSG_SYMBOLD} - ${timestamp} - ${MSG_SYMBOLD} `;
@@ -58,7 +59,7 @@ export class ConsoleLogger extends Logger implements IConsoleLogger {
 
         const output = prefix + wrappedLines.join("\n" + indent);
 
-        console.log(output + ColorUtility.RESET);
+        process.stdout.write(output + ColorUtility.RESET + "\n");
     }
 }
 

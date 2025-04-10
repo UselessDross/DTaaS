@@ -7,7 +7,7 @@ import { PullHandler, IRunCommand } from '../../src/files/git/git-files.service'
 describe('PullHandler', () => {
     const repoPath = 'dummy/repo/path';
 
-    it('should return false when repository path is not provided', () => {
+    it('1 - should return false when repository path is not provided', () => {
         const dummyRunCommand: IRunCommand = {
             runCommand: jest.fn(() => 'dummy')
         };
@@ -15,7 +15,7 @@ describe('PullHandler', () => {
         expect(pullHandler.pull()).toBe(false);
     });
 
-    it('should return true when git pull returns a non-null output', () => {
+    it('2 - should return true when git pull returns a non-null output', () => {
         const dummyRunCommand: IRunCommand = {
             runCommand: jest.fn((cmd: string, _cwd: string) => {
                 if (cmd === 'git status --porcelain') return ""; // clean working directory
@@ -28,7 +28,7 @@ describe('PullHandler', () => {
         expect(dummyRunCommand.runCommand).toHaveBeenCalledWith('git pull', repoPath);
     });
 
-    it('should return false when git pull returns null', () => {
+    it('3 - should return false when git pull returns null', () => {
         const dummyRunCommand: IRunCommand = {
             runCommand: jest.fn((cmd: string, _cwd: string) => {
                 if (cmd === 'git status --porcelain') return ""; // clean working directory

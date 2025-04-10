@@ -6,7 +6,7 @@ import { PushHandler, IRunCommand } from '../../src/files/git/git-files.service'
 describe(' PushHandler ', () => {
     const repoPath = 'dummy/repo/path';
 
-    it('should return false when repository path is not provided', () => {
+    it('1 - should return false when repository path is not provided', () => {
         const dummyRunCommand: IRunCommand = {
             runCommand: (jest.fn((_cmd: string, _cwd: string) => 'dummy') as unknown) as (command: string, cwd: string) => string | null
         };
@@ -14,7 +14,7 @@ describe(' PushHandler ', () => {
         expect(pushHandler.push()).toBe(false);
     });
 
-    it('should return true when git push returns a non-null output', () => {
+    it('2 - should return true when git push returns a non-null output', () => {
         const dummyRunCommand: IRunCommand = {
             runCommand: (jest.fn()
                 .mockImplementationOnce((cmd: string, _cwd: string) => {
@@ -33,7 +33,7 @@ describe(' PushHandler ', () => {
         expect(dummyRunCommand.runCommand).toHaveBeenNthCalledWith(2, 'git push', repoPath);
     });
 
-    it('should return false when git push returns null (simulated failure)', () => {
+    it('3 - should return false when git push returns null (simulated failure)', () => {
         const dummyRunCommand: IRunCommand = {
             runCommand: (jest.fn()
                 .mockImplementationOnce((cmd: string, _cwd: string) => {

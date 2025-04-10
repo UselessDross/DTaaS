@@ -102,7 +102,7 @@ class PeriodicHandler implements IPeriodicHandler {
       this.logger.ErrorMsg('No repository path set for PeriodicHandler.');
       return;
     }
-    console.log(`Scheduling periodic sync for repository updates every ${intervalSeconds} seconds.`);
+    this.logger.LogMsg(`Scheduling periodic sync for repository updates every ${intervalSeconds} seconds.`);
     let isSyncing = false;
 
     const syncCycle = async () => {
@@ -111,7 +111,7 @@ class PeriodicHandler implements IPeriodicHandler {
         return;
       }
       isSyncing = true;
-      console.log('─ ─ ─ ─ ─ Starting periodic sync cycle ─ ─ ─ ─ ─');
+      this.logger.LogMsg('- - - - - Starting periodic sync cycle - - - - -');
       try {
         const pulled = this.callPull();
         if (pulled) {
@@ -122,7 +122,7 @@ class PeriodicHandler implements IPeriodicHandler {
         }
       } finally {
         isSyncing = false;
-        console.log('─ ─ ─ ─ ─ Periodic sync cycle completed ─ ─ ─ ─ ─');
+        this.logger.LogMsg('- - - - - Periodic sync cycle completed - - - - -');
       }
     };
 

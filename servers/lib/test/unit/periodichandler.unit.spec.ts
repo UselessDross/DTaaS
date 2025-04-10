@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 globalThis.jest = jest;
 import { PeriodicHandler } from '../../src/files/git/git-files.service';
 
-describe('|=-> PeriodicHandler <-=|', () => {
+describe('PeriodicHandler', () => {
     const repoPath = 'dummy/repo/path';
     const intervalSeconds = 1;
 
@@ -16,7 +16,7 @@ describe('|=-> PeriodicHandler <-=|', () => {
         jest.useRealTimers();
     });
 
-    it('should call pull, checkCommit and push when sync cycle succeeds', async () => {
+    it('1 - should call pull, checkCommit and push when sync cycle succeeds', async () => {
         const handler = new PeriodicHandler(repoPath);
         // Override private methods using type assertion
         (handler as any).callPull = jest.fn(() => true);
@@ -35,7 +35,7 @@ describe('|=-> PeriodicHandler <-=|', () => {
         expect((handler as any).callPush).toHaveBeenCalled();
     });
 
-    it('should skip commit and push if pull fails', async () => {
+    it('2 - should skip commit and push if pull fails', async () => {
         const handler = new PeriodicHandler(repoPath);
         (handler as any).callPull = jest.fn(() => false);
         (handler as any).callCheckCommit = jest.fn();
@@ -50,7 +50,7 @@ describe('|=-> PeriodicHandler <-=|', () => {
         expect((handler as any).callPush).not.toHaveBeenCalled();
     });
 
-    it('should prevent overlapping sync cycles', async () => {
+    it('3 - should prevent overlapping sync cycles', async () => {
         // Use real timers for this test.
         jest.useRealTimers();
         const handler = new PeriodicHandler(repoPath);

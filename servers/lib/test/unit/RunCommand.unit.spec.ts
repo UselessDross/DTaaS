@@ -28,12 +28,12 @@ describe('RunCommand', () => {
         runCommandInstance = new RunCommand();
     });
 
-    it('╟ 1 ╢ should return expected output for a valid command', () => {
+    it('1 - should return expected output for a valid command', () => {
         const output = runCommandInstance.runCommand('echo hello', process.cwd());
         expect(output).toMatch(/hello/);
     });
 
-    it('╟ 2 ╢ should return null for an invalid command', () => {
+    it('2 - should return null for an invalid command', () => {
         const output = runCommandInstance.runCommand('nonexistentcommand', process.cwd());
         expect(output).toBeNull();
     });
