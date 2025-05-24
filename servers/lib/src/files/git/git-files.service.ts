@@ -35,17 +35,37 @@ export default class GitFilesService implements IFilesService {
         if (!gitRepo || typeof gitRepo['repo-url'] !== 'string') { throw new Error('Invalid repo config'); }
         const repoUrl: string = gitRepo['repo-url'];
         const httpToken: string = gitRepo['http-token'];
-        const typedClone = (git.clone as unknown as (opts: any) => Promise<void>);
-        const clonePromise = typedClone({
-          fs,
-          http,
-          dir: path.join(this.dataPath, userKey),
-          gitdir: path.join(this.dataPath, 'gitdir', userKey, '.git'),
-          url: this.buildAuthUrl(repoUrl, httpToken),
-          singleBranch: true,
-          depth: 1,
-        }).then(() => this.logger.log(`Done cloning ${repoUrl}`));
-        clonePromises.push(clonePromise);
+        const clonePath = path.join(this.dataPath, userKey);
+        const gitDirPath = path.join(this.dataPath, 'gitdir', userKey, '.git');
+
+        // Check if the repo has already been cloned
+        const alreadyCloned = fs.existsSync(path.join(gitDirPath, 'config'));
+
+        const doClone = async () => {
+          if (!alreadyCloned) {
+            const typedClone = (git.clone as unknown as (opts: any) => Promise<void>);
+            await typedClone({
+              fs,
+              http,
+              dir: clonePath,
+              gitdir: gitDirPath,
+              url: this.buildAuthUrl(repoUrl, httpToken),
+              singleBranch: true,
+              depth: 1,
+            });
+            this.logger.log(`Done cloning ${repoUrl}`);
+          } else {
+            this.logger.log(`Repo already exists at ${clonePath}, skipping clone.`);
+          }
+
+          // Always start auto-sync whether cloned now or already present
+          const autoSyncInstance = new PeriodicHandler(clonePath);
+          const syncInterval = this.normalizeSyncInterval(gitRepo["sync-interval"]);
+          autoSyncInstance.schedulePeriodicSync(syncInterval);
+          this.logger.log(`Scheduled auto-sync for ${repoUrl} every ${syncInterval} seconds.`);
+        };
+        clonePromises.push(doClone());
+
       });
     });
     await Promise.all(clonePromises);
@@ -57,6 +77,15 @@ export default class GitFilesService implements IFilesService {
   listDirectory(path: string): Promise<Project> { return this.localFilesService.listDirectory(path); }
   readFile(path: string): Promise<Project> { return this.localFilesService.readFile(path); }
   isValidUserKey(key: string): boolean { return /^[A-Za-z0-9_-]+$/.test(key); }
+  private normalizeSyncInterval(value: unknown, fallback: number = 60): number {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const parsed = parseInt(value, 10);
+      return isNaN(parsed) ? fallback : parsed;
+    }
+    return fallback;
+  }
+
 }
 // -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =
 // -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =
@@ -165,27 +194,25 @@ class PullHandler implements IPullHandler {
       this.logger.ErrorMsg('In PullHandler instance: No repository path set.');
       return false;
     }
+
+    // Log status before pulling, but do NOT abort
     const status = this.runCommand.runCommand('git status --porcelain', this.repoPath);
     if (status === null) {
       this.logger.ErrorMsg('Failed to retrieve git status. Command returned null.');
       return false;
     }
-    if (typeof status !== 'string') {
-      this.logger.ErrorMsg('Unexpected git status output format.');
+    this.logger.LogMsg(`Git status output (before pull): ${status}`);
+
+    const pullResult = this.runCommand.runCommand('git pull', this.repoPath);
+    if (pullResult === null) {
+      this.logger.ErrorMsg('git pull failed. Check for merge conflicts.');
       return false;
     }
-    if (status.trim() !== "") {
-      // If there are any local changes, abort pull.
-      if (/^[ MADRCU?!]+$/.test(status.trim())) {
-        this.logger.ErrorMsg('Local changes exist. Aborting pull to avoid merge conflicts.');
-      } else {
-        this.logger.ErrorMsg('Unexpected git status output format.');
-      }
-      return false;
-    }
-    this.logger.LogMsg('Working directory clean. Proceeding with pull...');
-    return this.runCommand.runCommand('git pull', this.repoPath) !== null;
+
+    this.logger.LogMsg('Successfully pulled latest changes.');
+    return true;
   }
+
 }
 class PushHandler implements IPushHandler {
   private repoPath: string | null = null;
@@ -257,8 +284,17 @@ class CheckCommitHandler implements ICheckCommitHandler {
     } else {
       this.logger.LogMsg('Local changes detected. Proceeding to commit.');
       this.runCommand.runCommand('git add .', this.repoPath);
+
+      // Check if anything was actually staged
+      const diffIndex = this.runCommand.runCommand('git diff --cached --exit-code', this.repoPath);
+      if (diffIndex === '') {
+        this.logger.LogMsg('No staged changes detected. Skipping commit.');
+        return false;
+      }
+
       this.logger.LogMsg(`Committing changes with message: "Auto commit at ${timestamp}"`);
       this.runCommand.runCommand(`git commit -m "Auto commit at ${timestamp}"`, this.repoPath);
+
       this.logger.LogMsg('Ready to push changes...');
       return true;
     }
@@ -359,8 +395,18 @@ class AutoSync {
   private runCommand(command: string, cwd: string): string | null {
     this.logger.LogMsg(`Running command: "${command}" in directory: ${cwd}`);
     try {
-      const output = cp.execSync(command, { cwd, stdio: 'pipe' });
-      const outStr = output.toString().trim();
+      const result = cp.spawnSync(command, { shell: true, cwd });
+
+      if (result.error) {
+        this.logger.ErrorMsg(`Spawn error: ${result.error.message}`);
+        return null;
+      }
+
+      if (result.stderr && result.stderr.length > 0) {
+        this.logger.ErrorMsg(`stderr: ${result.stderr.toString().trim()}`);
+      }
+
+      const outStr = result.stdout?.toString().trim() || '';
       this.logger.LogMsg(`Command output: ${outStr}`);
       return outStr;
     } catch (error) {

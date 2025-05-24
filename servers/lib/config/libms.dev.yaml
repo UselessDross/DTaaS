@@ -7,16 +7,18 @@ apollo-path: "/lib"
 graphql-playground: "true"
 # add a feild where the user can chose the interval for the autoSync
 # possiblenames for the filed:
-#  - sync-interval
+
 #
 
 git-repos: #only used in git mod
         - user1:
                   repo-url: "https://gitlab.com/dtaas/user1.git"
                   #   http-token: "xxxx"
+                  sync-interval: 60 # in seconds
         - user2:
                   repo-url: "https://gitlab.com/dtaas/user2.git"
                   #   http-token: "xxxx"
+                  sync-interval: 50 # in seconds
         - common:
                   repo-url: "https://gitlab.com/dtaas/common.git"
                   #   http-token: "xxxx"

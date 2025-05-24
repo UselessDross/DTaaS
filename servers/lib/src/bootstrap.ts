@@ -5,7 +5,7 @@ import * as path from 'path';
 import { Logger } from '@nestjs/common';
 import { GitRepo } from 'src/config/config.model.js';
 import { CONFIG_SERVICE, IConfig } from './config/config.interface.js';
-import { AutoSyncService } from './auto-sync/auto-sync.service.js';
+// import { AutoSyncService } from './auto-sync/auto-sync.service.js';
 import { ConsoleLogger } from './util/logger.js';
 // import { resolve } from 'path';
 
@@ -43,12 +43,12 @@ export default async function bootstrap(options?: BootstrapOptions) {
   });
 
 
-  // Then instantiate and schedule auto sync:
-  const autoSyncService = new AutoSyncService(new ConsoleLogger());
-  // Use repoPaths directly.
-  autoSyncService.setRepositories(repoPaths);
+  // // Then instantiate and schedule auto sync:
+  // const autoSyncService = new AutoSyncService(new ConsoleLogger());
+  // // Use repoPaths directly.
+  // autoSyncService.setRepositories(repoPaths);
 
-  autoSyncService.scheduleAutoSync(userRepoConfigs['sync-interval'] ?? 60);
+  // autoSyncService.scheduleAutoSync(userRepoConfigs['sync-interval'] ?? 60);
 
 
   await app.listen(port);
