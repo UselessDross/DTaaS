@@ -1,19 +1,19 @@
-// pushhandler.unit.spec.ts
+// test/unit/pushhandler.unit.spec.ts
 import { PushHandler } from '../../src/files/git/git-files.service.js';
 
 describe('PushHandler (simple return value tests)', () => {
     const repoPath = 'dummy/repo/path';
+    const gitdir = repoPath + '/.git';
 
     it('1 - should return false if repoPath is null', async () => {
-        const handler = new PushHandler(null as any);
-        const result = await handler.push();
-        expect(result).toBe(false);
+        const handler = new PushHandler(null as any, gitdir);
+        expect(await handler.push()).toBe(false);
     });
 
-    it('2 - should return true when push succeeds (integration test)', async () => {
-        // Only works if your test git repo is configured correctly and does not require credentials.
-        const handler = new PushHandler(repoPath); // make sure this path points to a real or test repo
+    it('2 - returns a boolean when gitdir is valid (integration)', async () => {
+        // this will actually attempt a push; for a real test you might spin up a tmp repo
+        const handler = new PushHandler(repoPath, gitdir);
         const result = await handler.push();
-        expect(typeof result).toBe('boolean'); // don't assume true, just check it's valid
+        expect(typeof result).toBe('boolean');
     });
 });

@@ -42,10 +42,10 @@ export default class GitFilesService implements IFilesService {
         // Check if the repo has already been cloned
         const alreadyCloned = fs.existsSync(path.join(gitDirPath, 'config'));
 
+        // inside GitFilesService.cloneRepositories(), replace doClone with:
         const doClone = async () => {
           if (!alreadyCloned) {
-            const typedClone = (git.clone as unknown as (opts: any) => Promise<void>);
-            await typedClone({
+            await git.clone({
               fs,
               http,
               dir: clonePath,
@@ -59,12 +59,13 @@ export default class GitFilesService implements IFilesService {
             this.logger.log(`Repo already exists at ${clonePath}, skipping clone.`);
           }
 
-          // Always start auto-sync whether cloned now or already present
-          const autoSyncInstance = new PeriodicHandler(clonePath);
+          // Pass both paths into PeriodicHandler:
+          const autoSyncInstance = new PeriodicHandler(clonePath, gitDirPath);
           const syncInterval = this.normalizeSyncInterval(gitRepo["sync-interval"]);
           autoSyncInstance.schedulePeriodicSync(syncInterval);
           this.logger.log(`Scheduled auto-sync for ${repoUrl} every ${syncInterval} seconds.`);
         };
+
         clonePromises.push(doClone());
 
       });
@@ -93,6 +94,7 @@ export default class GitFilesService implements IFilesService {
 }
 
 
+
 export interface ICheckCommitHandler { checkOrCommit(): Promise<boolean>; }
 export interface IPushHandler { push(): Promise<boolean>; }
 export interface IPullHandler { pull(): Promise<boolean>; }
@@ -105,11 +107,14 @@ class PeriodicHandler implements IPeriodicHandler {
   private pushHandler: IPushHandler;
   private checkCommitHandler: ICheckCommitHandler;
 
-  constructor(repoPath: string) {
+  constructor(
+    repoPath: string,
+    gitdir: string
+  ) {
     this.repoPath = repoPath;
     this.logger = new ConsoleLogger();
-    this.pullHandler = new PullHandler(repoPath);
-    this.pushHandler = new PushHandler(repoPath);
+    this.pullHandler = new PullHandler(repoPath, gitdir);
+    this.pushHandler = new PushHandler(repoPath, gitdir);
     this.checkCommitHandler = new CheckCommitHandler(repoPath);
   }
 
@@ -174,7 +179,10 @@ class PeriodicHandler implements IPeriodicHandler {
 class PullHandler implements IPullHandler {
   private repoPath: string | null = null;
   private readonly logger: ConsoleLogger;
-  constructor(repoPath_: string) {
+  constructor(
+    repoPath_,
+    private gitdir: string
+  ) {
     this.repoPath = repoPath_;
     this.logger = new ConsoleLogger();
   }
@@ -189,6 +197,7 @@ class PullHandler implements IPullHandler {
         fs,
         http,
         dir: this.repoPath,
+        gitdir: this.gitdir,
         singleBranch: true,
         author: {
           name: 'AutoSync',
@@ -208,8 +217,11 @@ class PullHandler implements IPullHandler {
 class PushHandler implements IPushHandler {
   private repoPath: string | null = null;
   private readonly logger: ConsoleLogger;
-  private readonly httpToken?: string;
-  constructor(repoPath_: string, httpToken?: string) {
+  constructor(
+    repoPath_: string,
+    private gitdir: string,
+    private httpToken?: string
+  ) {
     this.repoPath = repoPath_;
     this.logger = new ConsoleLogger();
     this.httpToken = httpToken;
@@ -228,6 +240,7 @@ class PushHandler implements IPushHandler {
         fs,
         http,
         dir: this.repoPath,
+        gitdir: this.gitdir,
         remote: 'origin',
         ref: 'main', // or 'master' depending on your branch name
         url: `https://${this.httpToken}@gitlab.com/your-org/repo.git`,
@@ -242,80 +255,80 @@ class PushHandler implements IPushHandler {
   }
 }
 
+// at top, import fs, git, ignore, etc. as you already have
+
+
+
 class CheckCommitHandler implements ICheckCommitHandler {
   private repoPath: string | null;
   private readonly logger: ConsoleLogger;
   private readonly fs: typeof fs;
   private readonly git: typeof git;
-  private readonly ignoreFactory: () => ReturnType<typeof ignore>;
+  // only the two methods we call:
+  private readonly createIgnore: () => {
+    add: (rule: string) => void;
+    ignores: (path: string) => boolean;
+  };
 
   constructor(
     repoPath_: string,
     deps?: {
       fs?: typeof fs;
       git?: typeof git;
-      ignoreFactory?: () => ReturnType<typeof ignore>;
+      // loosened type here:
+      ignoreFactory?: () => {
+        add: (rule: string) => void;
+        ignores: (path: string) => boolean;
+      };
     }
   ) {
     this.repoPath = repoPath_;
     this.logger = new ConsoleLogger();
     this.fs = deps?.fs ?? fs;
     this.git = deps?.git ?? git;
-    this.ignoreFactory = deps?.ignoreFactory ?? ignore;
+    // default to full `ignore()` but cast it down so TS is happy.
+    this.createIgnore = deps?.ignoreFactory
+      ? deps.ignoreFactory
+      : (() => ignore() as any);
   }
 
   public async checkOrCommit(): Promise<boolean> {
     this.logger.LogMsg('Checking for changes...');
     if (!this.repoPath) {
-      this.logger.ErrorMsg('In CheckCommitHandler instance: No repository path set.');
+      this.logger.ErrorMsg('No repo path set.');
       return false;
     }
-
     try {
-      const ig = this.ignoreFactory();
+      const ig = this.createIgnore();
       const gitignorePath = path.join(this.repoPath, '.gitignore');
-
       if (this.fs.existsSync(gitignorePath)) {
-        const content = this.fs.readFileSync(gitignorePath, 'utf8');
-        ig.add(content);
+        ig.add(this.fs.readFileSync(gitignorePath, 'utf8'));
       }
 
-      const statusMatrix = await this.git.statusMatrix({ fs: this.fs, dir: this.repoPath });
-      const changedFiles = statusMatrix
+      const matrix = await this.git.statusMatrix({ fs: this.fs, dir: this.repoPath });
+      const changed = matrix
         .filter(([, head, workdir, stage]) => head !== workdir || head !== stage)
-        .filter(([filepath]) => !ig.ignores(filepath))
-        .map(([filepath]) => filepath);
+        .map(([filepath]) => filepath)
+        .filter((fp) => !ig.ignores(fp));
 
-      if (changedFiles.length === 0) {
-        this.logger.LogMsg('No changes detected. Skipping commit.');
-        return true;
+      if (changed.length === 0) return true;
+
+      for (const fp of changed) {
+        await this.git.add({ fs: this.fs, dir: this.repoPath, filepath: fp });
       }
-
-      this.logger.LogMsg(`Changes detected in ${changedFiles.length} file(s).`);
-
-      for (const filepath of changedFiles) {
-        await this.git.add({ fs: this.fs, dir: this.repoPath, filepath });
-      }
-
-      const timestamp = new Date().toISOString();
       await this.git.commit({
         fs: this.fs,
         dir: this.repoPath,
-        message: `Auto commit at ${timestamp}`,
-        author: {
-          name: 'AutoSync',
-          email: 'autosync@example.com',
-        },
+        message: `Auto commit at ${new Date().toISOString()}`,
+        author: { name: 'AutoSync', email: 'autosync@example.com' },
       });
-
-      this.logger.LogMsg(`Committed ${changedFiles.length} file(s) at ${timestamp}`);
       return true;
-    } catch (error) {
-      this.logger.ErrorMsg('Failed to retrieve git status. Command returned null.');
+    } catch {
       return false;
     }
   }
 }
+
 
 
 

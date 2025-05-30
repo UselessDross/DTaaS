@@ -17,7 +17,7 @@ describe('PeriodicHandler Constituent Method Calls (manual async overrides)', ()
     });
 
     it('1 - should call PullHandler.pull, CheckCommitHandler.checkOrCommit and PushHandler.push in a sync cycle', async () => {
-        const handler = new PeriodicHandler(repoPath);
+        const handler = new PeriodicHandler(repoPath, repoPath + '/.git');
 
         // Replace internal async methods with tracked flags
         let pullCalled = false;

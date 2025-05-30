@@ -1,17 +1,23 @@
+// test/unit/checkcommithandler.unit.spec.ts
 import { jest } from '@jest/globals';
 globalThis.jest = jest;
 
+import * as fs from 'fs';
 import type { StatusRow } from 'isomorphic-git';
 
+// our mocks
 const existsSyncMock = jest.fn();
 const readFileSyncMock = jest.fn();
 const statusMatrixMock = jest.fn<() => Promise<StatusRow[]>>();
 const addMock = jest.fn<() => Promise<void>>();
 const commitMock = jest.fn<() => Promise<string>>();
-const ignoresMock = jest.fn();
-const ignoreMock = jest.fn(() => ({ add: jest.fn(), ignores: ignoresMock }));
+const ignoresMock = jest.fn<(path: string) => boolean>();
+const ignoreMock: () => { add: (rule: string) => void; ignores: (path: string) => boolean } = jest.fn(() => ({
+    add: jest.fn() as (rule: string) => void,
+    ignores: ignoresMock,
+}));
 
-// Mock ConsoleLogger
+// mock the logger so it doesn’t spam
 jest.unstable_mockModule('../../src/util/logger.js', () => ({
     ConsoleLogger: class {
         LogMsg() { }
@@ -19,8 +25,8 @@ jest.unstable_mockModule('../../src/util/logger.js', () => ({
     }
 }));
 
-// Load class after mocking
-const { CheckCommitHandler } = await import('../../src/files/git/git-files.service.js');
+// now import AFTER mocking
+const { CheckCommitHandler } = await import('../../src/files/git/git-files.service');
 
 describe('CheckCommitHandler — with injected fs/git/ignore mocks', () => {
     const repoPath = '/fake/repo';
@@ -28,14 +34,14 @@ describe('CheckCommitHandler — with injected fs/git/ignore mocks', () => {
     const mockDeps = {
         fs: {
             existsSync: existsSyncMock,
-            readFileSync: readFileSyncMock
-        } as unknown as typeof import('fs'),
+            readFileSync: readFileSyncMock,
+        } as unknown as typeof fs,
         git: {
             statusMatrix: statusMatrixMock,
             add: addMock,
-            commit: commitMock
-        } as any,
-        ignore: ignoreMock
+            commit: commitMock,
+        } as unknown as typeof import('isomorphic-git'),
+        ignoreFactory: ignoreMock,
     };
 
     beforeEach(() => {
@@ -47,7 +53,7 @@ describe('CheckCommitHandler — with injected fs/git/ignore mocks', () => {
         expect(await h.checkOrCommit()).toBe(false);
     });
 
-    it('2 - returns true if no changes are detected', async () => {
+    it('2 - returns true if no changes detected', async () => {
         statusMatrixMock.mockResolvedValueOnce([['file.txt', 1, 1, 1]]);
         ignoresMock.mockReturnValue(false);
         existsSyncMock.mockReturnValue(false);
@@ -60,7 +66,7 @@ describe('CheckCommitHandler — with injected fs/git/ignore mocks', () => {
         statusMatrixMock.mockResolvedValueOnce([['foo.txt', 1, 2, 1]]);
         ignoresMock.mockReturnValue(false);
         existsSyncMock.mockReturnValue(false);
-        addMock.mockResolvedValueOnce(undefined);
+        addMock.mockResolvedValueOnce();
         commitMock.mockResolvedValueOnce('some-oid');
 
         const h = new CheckCommitHandler(repoPath, mockDeps);
@@ -73,8 +79,7 @@ describe('CheckCommitHandler — with injected fs/git/ignore mocks', () => {
     it('4 - returns false if statusMatrix throws', async () => {
         statusMatrixMock.mockRejectedValueOnce(new Error('fail'));
         const h = new CheckCommitHandler(repoPath, mockDeps);
-        const ok = await h.checkOrCommit();
-        expect(ok).toBe(false);
+        expect(await h.checkOrCommit()).toBe(false);
     });
 
     it('5 - skips files ignored by .gitignore', async () => {

@@ -1,79 +1,48 @@
 import { PeriodicHandler } from '../../src/files/git/git-files.service.js';
 import { jest } from '@jest/globals';
+globalThis.jest = jest;
 
-describe('PeriodicHandler — method call integration (no jest.fn)', () => {
-    const repoPath = 'dummy/repo/path';
+describe('PeriodicHandler (manual async overrides)', () => {
+    const dir = 'dummy/repo';
+    const gitdir = dir + '/.git';
 
-    beforeEach(() => {
-        jest.useFakeTimers({ doNotFake: [] });
-    });
-
+    beforeEach(() => { jest.useFakeTimers(); });
     afterEach(() => {
         jest.clearAllTimers();
         jest.useRealTimers();
     });
 
-    it('1 - should call pull, commit, and push in a sync cycle', async () => {
-        const handler = new PeriodicHandler(repoPath);
+    it('calls pull → commit → push in one cycle', async () => {
+        const h = new PeriodicHandler(dir, gitdir);
+        let pulled = false, committed = false, pushed = false;
 
-        let pullCalled = false;
-        let commitCalled = false;
-        let pushCalled = false;
+        // override the private methods:
+        (h as any).callPull = async () => { pulled = true; return true; };
+        (h as any).callCheckCommit = async () => { committed = true; return true; };
+        (h as any).callPush = async () => { pushed = true; return true; };
 
-        (handler as any).callPull = async () => {
-            pullCalled = true;
-            return true;
-        };
-
-        (handler as any).callCheckCommit = async () => {
-            commitCalled = true;
-            return true;
-        };
-
-        (handler as any).callPush = async () => {
-            pushCalled = true;
-            return true;
-        };
-
-        handler.schedulePeriodicSync(1);
-
-        // Use async version to allow all microtasks to run
+        h.schedulePeriodicSync(1);
+        // advance 1 second and wait for the async cycle to run:
         await jest.advanceTimersByTimeAsync(1000);
 
-        expect(pullCalled).toBe(true);
-        expect(commitCalled).toBe(true);
-        expect(pushCalled).toBe(true);
+        expect(pulled).toBe(true);
+        expect(committed).toBe(true);
+        expect(pushed).toBe(true);
     });
 
-    it('2 - should not call commit or push if pull fails', async () => {
-        const handler = new PeriodicHandler(repoPath);
+    it('skips commit/push when pull fails', async () => {
+        const h = new PeriodicHandler(dir, gitdir);
+        let pulled = false, committed = false, pushed = false;
 
-        let pullCalled = false;
-        let commitCalled = false;
-        let pushCalled = false;
+        (h as any).callPull = async () => { pulled = true; return false; };
+        (h as any).callCheckCommit = async () => { committed = true; return true; };
+        (h as any).callPush = async () => { pushed = true; return true; };
 
-        (handler as any).callPull = async () => {
-            pullCalled = true;
-            return false; // pull fails
-        };
-
-        (handler as any).callCheckCommit = async () => {
-            commitCalled = true;
-            return true;
-        };
-
-        (handler as any).callPush = async () => {
-            pushCalled = true;
-            return true;
-        };
-
-        handler.schedulePeriodicSync(1);
-
-        // Let async callbacks run too
+        h.schedulePeriodicSync(1);
         await jest.advanceTimersByTimeAsync(1000);
 
-        expect(pullCalled).toBe(true);
-        expect(commitCalled).toBe(false);
-        expect(pushCalled).toBe(false);
+        expect(pulled).toBe(true);
+        expect(committed).toBe(false);
+        expect(pushed).toBe(false);
     });
 });
