@@ -1,4 +1,5 @@
 import { IFilesService } from '../interfaces/files.service.interface.js';
+
 import { CONFIG_SERVICE } from '../../config/config.interface.js';
 import LocalFilesService from '../local/local-files.service.js';
 import { CONFIG_MODE } from '../../enums/config-mode.enum.js';
@@ -10,8 +11,8 @@ import { ConsoleLogger } from '../../util/logger.js';
 import Config from '../../config/config.service.js';
 import { Project } from 'src/types.js';
 import * as git from 'isomorphic-git';
-import * as cp from 'child_process';
-import { fileURLToPath } from 'url';
+
+import ignore from 'ignore';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -71,7 +72,10 @@ export default class GitFilesService implements IFilesService {
     await Promise.all(clonePromises);
   }
 
-  private buildAuthUrl(repoUrl: string, httpToken?: string): string { return httpToken ? `https://${httpToken}@${repoUrl.replace('https://', '')}` : repoUrl; }
+  private buildAuthUrl(repoUrl: string, httpToken?: string): string {
+    return httpToken ? `https://${httpToken}@${repoUrl.replace('https://', '')}` : repoUrl;
+  }
+
   init(): Promise<void> { return this.cloneRepositories(); }
   getMode(): CONFIG_MODE { return CONFIG_MODE.GIT; }
   listDirectory(path: string): Promise<Project> { return this.localFilesService.listDirectory(path); }
@@ -87,24 +91,11 @@ export default class GitFilesService implements IFilesService {
   }
 
 }
-// -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =
-// -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =
-// -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =
-// NOTE: The auto-sync functionality is integrated in this file (see below) and is not using the separate autoSync.ts module.
-// -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =  -  =
 
 
-
-
-
-//==========================================================
-//==========================================================
-//==========================================================
-
-export interface IRunCommand { runCommand(command: string, cwd: string): string | null; }
-export interface ICheckCommitHandler { checkOrCommit(): boolean; }
-export interface IPushHandler { push(): boolean; }
-export interface IPullHandler { pull(): boolean; }
+export interface ICheckCommitHandler { checkOrCommit(): Promise<boolean>; }
+export interface IPushHandler { push(): Promise<boolean>; }
+export interface IPullHandler { pull(): Promise<boolean>; }
 export interface IPeriodicHandler { schedulePeriodicSync(intervalSeconds: number): void; }
 
 class PeriodicHandler implements IPeriodicHandler {
@@ -114,24 +105,36 @@ class PeriodicHandler implements IPeriodicHandler {
   private pushHandler: IPushHandler;
   private checkCommitHandler: ICheckCommitHandler;
 
-  constructor(repoPath: string, runCommand?: IRunCommand) {
+  constructor(repoPath: string) {
     this.repoPath = repoPath;
     this.logger = new ConsoleLogger();
-    this.pullHandler = new PullHandler(repoPath, runCommand);
-    this.pushHandler = new PushHandler(repoPath, runCommand);
-    this.checkCommitHandler = new CheckCommitHandler(repoPath, runCommand);
+    this.pullHandler = new PullHandler(repoPath);
+    this.pushHandler = new PushHandler(repoPath);
+    this.checkCommitHandler = new CheckCommitHandler(repoPath);
   }
 
-  private callPull(): boolean { return this.pullHandler.pull(); }
-  private callPush(): boolean { return this.pushHandler.push(); }
-  private callCheckCommit(): boolean { return this.checkCommitHandler.checkOrCommit(); }
+  private async callPull(): Promise<boolean> {
+    this.logger.LogMsg('calling pull...');
+
+    return await this.pullHandler.pull();
+  }
+
+  private async callPush(): Promise<boolean> {
+    return await this.pushHandler.push();
+  }
+
+  private async callCheckCommit(): Promise<boolean> {
+    return await this.checkCommitHandler.checkOrCommit();
+  }
 
   public schedulePeriodicSync(intervalSeconds: number): void {
     if (!this.repoPath) {
       this.logger.ErrorMsg('No repository path set for PeriodicHandler.');
       return;
     }
+
     this.logger.LogMsg(`Scheduling periodic sync for repository updates every ${intervalSeconds} seconds.`);
+
     let isSyncing = false;
 
     const syncCycle = async () => {
@@ -139,16 +142,24 @@ class PeriodicHandler implements IPeriodicHandler {
         this.logger.ErrorMsg('Sync already in progress. Skipping this cycle.');
         return;
       }
+
       isSyncing = true;
       this.logger.LogMsg('- - - - - Starting periodic sync cycle - - - - -');
+
       try {
-        const pulled = this.callPull();
+        const pulled = await this.callPull();
+
         if (pulled) {
-          const changesCommitted = this.callCheckCommit();
-          if (changesCommitted) { this.callPush(); }
+          const committed = await this.callCheckCommit();
+
+          if (committed) {
+            await this.callPush();
+          }
         } else {
           this.logger.ErrorMsg('Pull failed. Skipping this commit and push cycle.');
         }
+      } catch (error) {
+        this.logger.ErrorMsg(`Unexpected error during sync cycle: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
         isSyncing = false;
         this.logger.LogMsg('- - - - - Periodic sync cycle completed - - - - -');
@@ -158,327 +169,157 @@ class PeriodicHandler implements IPeriodicHandler {
     setInterval(syncCycle, intervalSeconds * 1000);
   }
 }
-class RunCommand implements IRunCommand {
-  private readonly logger: ConsoleLogger;
-  constructor() {
-    this.logger = new ConsoleLogger();
-  }
-  public runCommand(command: string, cwd: string): string | null {
-    this.logger.LogMsg(`Running command: "${command}" in directory: ${cwd}`);
-    try {
-      const output = cp.execSync(command, { cwd, stdio: 'pipe' });
-      const outStr = output.toString().trim();
-      this.logger.LogMsg(`Command output: ${outStr}`);
-      return outStr;
-    } catch (error) {
-      this.logger.ErrorMsg(`Error running command: "${command}" in ${cwd}`);
-      this.logger.ErrorMsg(error instanceof Error ? error.message : String(error));
-      return null;
-    }
-  }
-}
+
+
 class PullHandler implements IPullHandler {
   private repoPath: string | null = null;
   private readonly logger: ConsoleLogger;
-  private runCommand: IRunCommand;
-
-  constructor(repoPath_: string, runCommand_?: IRunCommand) {
+  constructor(repoPath_: string) {
     this.repoPath = repoPath_;
     this.logger = new ConsoleLogger();
-    this.runCommand = runCommand_ || new RunCommand();
   }
-
-  public pull(): boolean {
+  public async pull(): Promise<boolean> {
     this.logger.LogMsg('Pulling latest changes...');
     if (!this.repoPath) {
       this.logger.ErrorMsg('In PullHandler instance: No repository path set.');
       return false;
     }
-
-    // Log status before pulling, but do NOT abort
-    const status = this.runCommand.runCommand('git status --porcelain', this.repoPath);
-    if (status === null) {
-      this.logger.ErrorMsg('Failed to retrieve git status. Command returned null.');
+    try {
+      const result = await git.pull({
+        fs,
+        http,
+        dir: this.repoPath,
+        singleBranch: true,
+        author: {
+          name: 'AutoSync',
+          email: ' ',
+        },
+        fastForward: true,
+      });
+      this.logger.LogMsg(`Pull result: ${JSON.stringify(result, null, 2)}`);
+      return true; // on successful pull
+    } catch (error) {
+      if (error instanceof git.Errors.MergeConflictError) { this.logger.ErrorMsg('Merge conflict detected during pull. Please resolve conflicts manually.'); }
+      else { this.logger.ErrorMsg(`Error pulling changes: ${error instanceof Error ? error.message : String(error)}`); }
       return false;
     }
-    this.logger.LogMsg(`Git status output (before pull): ${status}`);
-
-    const pullResult = this.runCommand.runCommand('git pull', this.repoPath);
-    if (pullResult === null) {
-      this.logger.ErrorMsg('git pull failed. Check for merge conflicts.');
-      return false;
-    }
-
-    this.logger.LogMsg('Successfully pulled latest changes.');
-    return true;
   }
-
 }
 class PushHandler implements IPushHandler {
   private repoPath: string | null = null;
   private readonly logger: ConsoleLogger;
-  private runCommand: IRunCommand;
-
-  constructor(repoPath_: string, runCommand_?: IRunCommand) {
+  private readonly httpToken?: string;
+  constructor(repoPath_: string, httpToken?: string) {
     this.repoPath = repoPath_;
     this.logger = new ConsoleLogger();
-    this.runCommand = runCommand_ || new RunCommand();
+    this.httpToken = httpToken;
   }
 
-  public push(): boolean {
+  public async push(): Promise<boolean> {
     this.logger.LogMsg('Pushing changes to remote...');
     if (!this.repoPath) {
       this.logger.ErrorMsg('In PushHandler instance: No repository path set.');
       return false;
     }
-    const status = this.runCommand.runCommand('git status --porcelain', this.repoPath);
-    if (status === null) {
-      this.logger.ErrorMsg('Failed to retrieve git status. Command returned null.');
-      return false;
-    }
-    if (typeof status !== 'string') {
-      this.logger.ErrorMsg('Unexpected git status output format.');
-      return false;
-    }
-    if (status.trim() === "") {
-      this.logger.LogMsg('No local changes detected. Nothing to push.');
+
+    try {
+      //const status = this.runCommand.runCommand('git status --porcelain', this.repoPath);
+      const result = await git.push({
+        fs,
+        http,
+        dir: this.repoPath,
+        remote: 'origin',
+        ref: 'main', // or 'master' depending on your branch name
+        url: `https://${this.httpToken}@gitlab.com/your-org/repo.git`,
+      });
+
+      this.logger.LogMsg(`Push result: ${JSON.stringify(result, null, 2)}`);
       return true;
-    }
-    if (!/^[ MADRCU?!]+/.test(status.trim())) {
-      this.logger.ErrorMsg('Unexpected git status output format.');
+    } catch (error) {
+      this.logger.ErrorMsg(`Push failed: ${error.message}`);
       return false;
     }
-    return this.runCommand.runCommand('git push', this.repoPath) !== null;
   }
 }
-class CheckCommitHandler implements ICheckCommitHandler {
-  private repoPath: string | null = null;
-  private readonly logger: ConsoleLogger;
-  private runCommand: IRunCommand;
 
-  constructor(repoPath_: string, runCommand_?: IRunCommand) {
+class CheckCommitHandler implements ICheckCommitHandler {
+  private repoPath: string | null;
+  private readonly logger: ConsoleLogger;
+  private readonly fs: typeof fs;
+  private readonly git: typeof git;
+  private readonly ignoreFactory: () => ReturnType<typeof ignore>;
+
+  constructor(
+    repoPath_: string,
+    deps?: {
+      fs?: typeof fs;
+      git?: typeof git;
+      ignoreFactory?: () => ReturnType<typeof ignore>;
+    }
+  ) {
     this.repoPath = repoPath_;
     this.logger = new ConsoleLogger();
-    this.runCommand = runCommand_ || new RunCommand();
+    this.fs = deps?.fs ?? fs;
+    this.git = deps?.git ?? git;
+    this.ignoreFactory = deps?.ignoreFactory ?? ignore;
   }
 
-  public checkOrCommit(): boolean {
-    const timestamp = new Date().toISOString();
+  public async checkOrCommit(): Promise<boolean> {
     this.logger.LogMsg('Checking for changes...');
     if (!this.repoPath) {
       this.logger.ErrorMsg('In CheckCommitHandler instance: No repository path set.');
       return false;
     }
-    const status = this.runCommand.runCommand('git status --porcelain', this.repoPath);
-    if (status === null) {
+
+    try {
+      const ig = this.ignoreFactory();
+      const gitignorePath = path.join(this.repoPath, '.gitignore');
+
+      if (this.fs.existsSync(gitignorePath)) {
+        const content = this.fs.readFileSync(gitignorePath, 'utf8');
+        ig.add(content);
+      }
+
+      const statusMatrix = await this.git.statusMatrix({ fs: this.fs, dir: this.repoPath });
+      const changedFiles = statusMatrix
+        .filter(([, head, workdir, stage]) => head !== workdir || head !== stage)
+        .filter(([filepath]) => !ig.ignores(filepath))
+        .map(([filepath]) => filepath);
+
+      if (changedFiles.length === 0) {
+        this.logger.LogMsg('No changes detected. Skipping commit.');
+        return true;
+      }
+
+      this.logger.LogMsg(`Changes detected in ${changedFiles.length} file(s).`);
+
+      for (const filepath of changedFiles) {
+        await this.git.add({ fs: this.fs, dir: this.repoPath, filepath });
+      }
+
+      const timestamp = new Date().toISOString();
+      await this.git.commit({
+        fs: this.fs,
+        dir: this.repoPath,
+        message: `Auto commit at ${timestamp}`,
+        author: {
+          name: 'AutoSync',
+          email: 'autosync@example.com',
+        },
+      });
+
+      this.logger.LogMsg(`Committed ${changedFiles.length} file(s) at ${timestamp}`);
+      return true;
+    } catch (error) {
       this.logger.ErrorMsg('Failed to retrieve git status. Command returned null.');
       return false;
     }
-    if (typeof status !== 'string' || !/^[ MADRCU?!]+/.test(status.trim())) {
-      this.logger.ErrorMsg('Unexpected git status output format.');
-      return false;
-    }
-    if (!status) {
-      this.logger.LogMsg('No local changes detected. Nothing to commit.');
-      return true;
-    } else {
-      this.logger.LogMsg('Local changes detected. Proceeding to commit.');
-      this.runCommand.runCommand('git add .', this.repoPath);
-
-      // Check if anything was actually staged
-      const diffIndex = this.runCommand.runCommand('git diff --cached --exit-code', this.repoPath);
-      if (diffIndex === '') {
-        this.logger.LogMsg('No staged changes detected. Skipping commit.');
-        return false;
-      }
-
-      this.logger.LogMsg(`Committing changes with message: "Auto commit at ${timestamp}"`);
-      this.runCommand.runCommand(`git commit -m "Auto commit at ${timestamp}"`, this.repoPath);
-
-      this.logger.LogMsg('Ready to push changes...');
-      return true;
-    }
   }
 }
 
 
-/*
-    this.runCommand('git add -u', this.repoPath);
-
-    // 2. Check if local changes exist
 
 
-    // 3. Commit & push
-    this.logger.LogMsg('Adding changes...');
-    this.runCommand('git add .', this.repoPath);
+export { CheckCommitHandler, PullHandler, PushHandler, PeriodicHandler };
 
-    const timestamp = new Date().toISOString();
-    this.logger.LogMsg(`Committing changes with message: "Auto commit at ${timestamp}"`);
-    this.runCommand(`git commit -m "Auto commit at ${timestamp}"`, this.repoPath);
-
-
-
-
-
-─ ━ │ ┃ ┄ ┅ ┆ ┇ ┈ ┉ ┊ ┋ ┌ ┍ ┎ ┏ ┐ ┑ ┒ ┓ └ ┕ ┖ ┗ ┘ ┙ ┚ ┛ 
-├ ┝ ┞ ┟ ┠ ┡ ┢ ┣ ┤ ┥ ┦ ┧ ┨ ┩ ┪ ┫ ┬ ┭ ┮ ┯ ┰ ┱ ┲ ┳ ┴ ┵ ┶ ┷ -_
-┸ ┹ ┺ ┻ ┼ ┽ ┾ ┿ ╀ ╁ ╂ ╃ ╄ ╅ ╆ ╇ ╈ ╉ ╊ ╋
-╴╵╶╷━╸╹━╺━╻╼╽╾╿ 
-╟  ╤ ╧ ╟╢ ▔━▁
-═₌₌                                        ╤═╤ ┬ ┴
-   ║ ╒  ╓ ╔ ╕ ╖  ╗ ╘ ╙ ╚ ╛ ╜ ╝ ╞ ┒┏	╟ ─╰─╯
-
-╱ ╲ ╳ ╴ ╵ ╶ ╷ ╸ ╹ ╺ ╻ ╼ ╽ ╾ ╿ ─ ━ ┊ ┋ ┌ ┍ ┎ ┏ ┐ ┑ ┒ ┓ ╭─┬─╮
-╔ ╗ ╚ ╝ ╠ ╣ ╦ ╧ ╨ ╤ ╥ ╙ ╘ ╓ ╖ ╒ ╕
-╔═╗ ║ ╚═╝ ╠═╣ ╦ ╩ ╠═╣ ╦ ╩ ╠═╣ ╦ ╩
-╔═╗ ║ ╚═╝ ╠═╣ ╦ ╩ ╠═╣ ╦ ╩ ╠═╣ ╦ ╩
-
-
-┏━━━━━━━━━━━━━━┓  ┏━━━━━━━━━━━━━━┓  ┏━━━━━━━━━━━━━━━┓  ┏━━━━━━━━━━━━━━━━┓
-┃ <Interface>  ┃  ┃ <Interface>  ┃  ┃ <Interface>   ┃  ┃ <Interface>    ┃
-┃ IPullHandler ┃  ┃ IPushHandler ┃  ┃ ICheckHandler ┃  ┃ ICommitHandler ┃
-┗━━━━━━━━━━━━━━┛  ┗━━━━━━━━━━━━━━┛  ┗━━━━━━━━━━━━━━━┛  ┗━━━━━━━━━━━━━━━━┛
-       Δ                 Δ                 Δ                  Δ
-       ╵                 ╵                 ╵                  ╵
-       ╵                 ╵                 ╵                  ╵
-       ╵                 ╵                 ╵                  ╵
-┏━━━━━━┷━━━━━━━┓  ┏━━━━━━┷━━━━━━━┓  ┏━━━━━━┷━━━━━━━━┓  ┏━━━━━━┷━━━━━━━━━┓
-┃    <Class>   ┃  ┃    <Class>   ┃  ┃    <Class>    ┃  ┃    <Class>     ┃
-┃  PullHandler ┃  ┃  PushHandler ┃  ┃  CheckHandler ┃  ┃  CommitHandler ┃
-┗━━━━━━┯━━━━━━━┛  ┗━━━━━━┯━━━━━━━┛  ┗━━━━━━┯━━━━━━━━┛  ┗━━━━━━┯━━━━━━━━━┛
-       │                 │                 │                  │
-       │                 ╰────────┬────────╯                  │
-       ╰──────────────────────────┼───────────────────────────╯
-                                  │
-                                  ↓
-                           ┏━━━━━━━━━━━━━┓                 
-                           ┃ <Interface> ┃                 
-                           ┃ IRunCommand ┃                 
-                           ┗━━━━━━━━━━━━━┛                 
-                                  Δ
-                                  ╵
-                                  ╵
-                                  ╵
-                           ┏━━━━━━┷━━━━━━┓      
-                           ┃   <class>   ┃      
-                           ┃  RunCommand ┃      
-                           ┗━━━━━━━━━━━━━┛      
-
-*/
-
-
-
-
-class AutoSync {
-  private repoPath: string | null = null;
-  private readonly logger: ConsoleLogger;
-
-  constructor() {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    this.repoPath = path.join(__dirname, '../../../../../');
-
-    this.logger = new ConsoleLogger();
-    this.logger.LogMsg('AutoSync initialized.');
-  }
-  /**
-   * Set the repository path to be auto-synced.
-   * @param repoPath The absolute path to the repository.
-   */
-  public setRepository(repoPath: string): void {
-    this.repoPath = repoPath;
-    this.logger.LogMsg(`Repository path set to: ${repoPath}`);
-  }
-
-  public GetCurrentRepository(): string { return this.repoPath; }
-
-  private runCommand(command: string, cwd: string): string | null {
-    this.logger.LogMsg(`Running command: "${command}" in directory: ${cwd}`);
-    try {
-      const result = cp.spawnSync(command, { shell: true, cwd });
-
-      if (result.error) {
-        this.logger.ErrorMsg(`Spawn error: ${result.error.message}`);
-        return null;
-      }
-
-      if (result.stderr && result.stderr.length > 0) {
-        this.logger.ErrorMsg(`stderr: ${result.stderr.toString().trim()}`);
-      }
-
-      const outStr = result.stdout?.toString().trim() || '';
-      this.logger.LogMsg(`Command output: ${outStr}`);
-      return outStr;
-    } catch (error) {
-      this.logger.ErrorMsg(`Error running command: "${command}" in ${cwd}`);
-      this.logger.ErrorMsg(error instanceof Error ? error.message : String(error));
-      return null;
-    }
-  }
-
-
-  private async autoSync(): Promise<void> {
-    if (!this.repoPath) {
-      this.logger.ErrorMsg('No repository set. Use setRepository() first.');
-      return;
-    }
-
-    this.logger.LogMsg(`Starting auto sync process for repository at: ${this.repoPath}`);
-    try {
-      this.runCommand('git remote -v', this.repoPath);
-      this.runCommand('git branch --set-upstream-to=origin/main main', this.repoPath);
-    } catch (err) {
-      console.log('Error setting upstream:', err.message);
-    }
-
-    // 1. Pull from remote
-    this.logger.LogMsg('Pulling latest changes...');
-    const pullResult = this.runCommand('git pull', this.repoPath);
-    if (pullResult === null) return;
-
-    // 2. Check if local changes exist
-    this.logger.LogMsg('Checking for changes...');
-    const status = this.runCommand('git status --porcelain', this.repoPath);
-    if (!status) {
-      this.logger.LogMsg('No local changes to commit.');
-      return;
-    }
-
-    // 3. Commit & push
-    this.logger.LogMsg('Adding changes...');
-    this.runCommand('git add .', this.repoPath);
-
-    const timestamp = new Date().toISOString();
-    this.logger.LogMsg(`Committing changes with message: "Auto commit at ${timestamp}"`);
-    this.runCommand(`git commit -m "Auto commit at ${timestamp}"`, this.repoPath);
-
-    this.logger.LogMsg('Pushing changes...');
-    this.runCommand('git push', this.repoPath);
-
-    this.logger.LogMsg('Auto sync completed successfully.');
-  }
-  public async syncRepository(): Promise<void> { await this.autoSync(); }
-
-  public scheduleAutoSync(intervalSeconds: number): void {
-    if (!this.repoPath) {
-      this.logger.ErrorMsg('No repository set. Use setRepository() first.');
-      return;
-    }
-
-    this.logger.LogMsg(`Scheduling auto sync every ${intervalSeconds} seconds.`);
-    setInterval(async () => {
-      await this.autoSync();
-    }, intervalSeconds * 1000);
-  }
-
-
-}
-
-export { AutoSync, RunCommand, CheckCommitHandler, PullHandler, PushHandler, PeriodicHandler };
-
-
-
-//==========================================================
-//==========================================================
-//==========================================================
 

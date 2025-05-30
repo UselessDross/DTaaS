@@ -8,7 +8,6 @@ graphql-playground: "true"
 # add a feild where the user can chose the interval for the autoSync
 # possiblenames for the filed:
 
-#
 
 git-repos: #only used in git mod
         - user1:

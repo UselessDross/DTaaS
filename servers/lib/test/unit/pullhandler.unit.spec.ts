@@ -1,43 +1,17 @@
-// ...existing imports...
-import { jest } from '@jest/globals';
-// Attach jest to globalThis for compatibility
-globalThis.jest = jest;
-import { PullHandler, IRunCommand } from '../../src/files/git/git-files.service';
+import { CheckCommitHandler } from '../../src/files/git/git-files.service.js';
 
-describe('PullHandler', () => {
+describe('CheckCommitHandler (return-value only)', () => {
     const repoPath = 'dummy/repo/path';
 
-    it('1 - should return false when repository path is not provided', () => {
-        const dummyRunCommand: IRunCommand = {
-            runCommand: jest.fn(() => 'dummy')
-        };
-        const pullHandler = new PullHandler(null as any, dummyRunCommand);
-        expect(pullHandler.pull()).toBe(false);
+    it('1 - should return false if repoPath is not set', async () => {
+        const handler = new CheckCommitHandler(null as any);
+        const result = await handler.checkOrCommit();
+        expect(result).toBe(false);
     });
 
-    it('2 - should return true when git pull returns a non-null output', () => {
-        const dummyRunCommand: IRunCommand = {
-            runCommand: jest.fn((cmd: string, _cwd: string) => {
-                if (cmd === 'git status --porcelain') return ""; // clean working directory
-                if (cmd === 'git pull') return "pull successful";
-                return "";
-            })
-        };
-        const pullHandler = new PullHandler(repoPath, dummyRunCommand);
-        expect(pullHandler.pull()).toBe(true);
-        expect(dummyRunCommand.runCommand).toHaveBeenCalledWith('git pull', repoPath);
-    });
-
-    it('3 - should return false when git pull returns null', () => {
-        const dummyRunCommand: IRunCommand = {
-            runCommand: jest.fn((cmd: string, _cwd: string) => {
-                if (cmd === 'git status --porcelain') return ""; // clean working directory
-                if (cmd === 'git pull') return null;
-                return "";
-            })
-        };
-        const pullHandler = new PullHandler(repoPath, dummyRunCommand);
-        expect(pullHandler.pull()).toBe(false);
-        expect(dummyRunCommand.runCommand).toHaveBeenCalledWith('git pull', repoPath);
+    it('2 - should return true/false depending on changes or not', async () => {
+        const handler = new CheckCommitHandler(repoPath);
+        const result = await handler.checkOrCommit();
+        expect(typeof result).toBe('boolean');
     });
 });

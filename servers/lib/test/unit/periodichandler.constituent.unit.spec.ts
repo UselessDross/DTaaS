@@ -1,34 +1,51 @@
 import { jest } from '@jest/globals';
 globalThis.jest = jest;
-import { PeriodicHandler, PullHandler, CheckCommitHandler, PushHandler } from '../../src/files/git/git-files.service';
 
-describe('PeriodicHandler Constituent Method Calls', () => {
+import { PeriodicHandler } from '../../src/files/git/git-files.service.js';
+
+describe('PeriodicHandler Constituent Method Calls (manual async overrides)', () => {
     const repoPath = 'dummy/repo/path';
     const intervalSeconds = 1;
 
     beforeEach(() => {
-        jest.useFakeTimers();
+        jest.useFakeTimers({ doNotFake: [] });
     });
 
     afterEach(() => {
         jest.clearAllTimers();
         jest.useRealTimers();
-        jest.restoreAllMocks();
     });
 
     it('1 - should call PullHandler.pull, CheckCommitHandler.checkOrCommit and PushHandler.push in a sync cycle', async () => {
-        const pullSpy = jest.spyOn(PullHandler.prototype, 'pull').mockReturnValue(true);
-        const checkCommitSpy = jest.spyOn(CheckCommitHandler.prototype, 'checkOrCommit').mockReturnValue(true);
-        const pushSpy = jest.spyOn(PushHandler.prototype, 'push').mockReturnValue(true);
+        const handler = new PeriodicHandler(repoPath);
 
-        const periodicHandler = new PeriodicHandler(repoPath);
-        periodicHandler.schedulePeriodicSync(intervalSeconds);
-        // Advance timers to trigger one sync cycle
-        jest.advanceTimersByTime(intervalSeconds * 1000 + 100);
-        await Promise.resolve();
+        // Replace internal async methods with tracked flags
+        let pullCalled = false;
+        let commitCalled = false;
+        let pushCalled = false;
 
-        expect(pullSpy).toHaveBeenCalled();
-        expect(checkCommitSpy).toHaveBeenCalled();
-        expect(pushSpy).toHaveBeenCalled();
+        (handler as any).callPull = async () => {
+            pullCalled = true;
+            return true;
+        };
+
+        (handler as any).callCheckCommit = async () => {
+            commitCalled = true;
+            return true;
+        };
+
+        (handler as any).callPush = async () => {
+            pushCalled = true;
+            return true;
+        };
+
+        handler.schedulePeriodicSync(intervalSeconds);
+
+        // Wait for the interval and microtasks to finish
+        await jest.advanceTimersByTimeAsync(intervalSeconds * 1000);
+
+        expect(pullCalled).toBe(true);
+        expect(commitCalled).toBe(true);
+        expect(pushCalled).toBe(true);
     });
 });
