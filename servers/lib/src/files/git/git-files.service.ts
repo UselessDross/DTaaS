@@ -2,18 +2,20 @@ import { IFilesService } from '../interfaces/files.service.interface.js';
 import { CONFIG_SERVICE } from '../../config/config.interface.js';
 import LocalFilesService from '../local/local-files.service.js';
 import { CONFIG_MODE } from '../../enums/config-mode.enum.js';
-import { Inject, Injectable } from '@nestjs/common';
 import * as http from 'isomorphic-git/http/node/index.cjs'; // used by isomorphic-git
-import * as git from 'isomorphic-git';
+
+import { MergeHandler, IMergeHandler } from './MergeHandler.js';
+
 import { GitRepo } from 'src/config/config.model.js';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConsoleLogger } from '../../util/logger.js';
 import Config from '../../config/config.service.js';
 import { Project } from 'src/types.js';
-
-import ignore from 'ignore'; // library to parse .gitignore rules
-import * as path from 'path';
-import * as fs from 'fs';
+import * as git from 'isomorphic-git';
 import fs2 from 'fs/promises';
+import * as path from 'path';
+import ignore from 'ignore'; // library to parse .gitignore rules
+import * as fs from 'fs';
 
 @Injectable()
 export default class GitFilesService implements IFilesService {
@@ -124,14 +126,14 @@ export interface IPeriodicHandler {
 class PeriodicHandler implements IPeriodicHandler {
   private readonly logger = new ConsoleLogger(PeriodicHandler.name);
   private readonly repoPath: string;
-  private readonly authUrl: string;
+  // private readonly authUrl: string;
   private readonly pullHandler: IPullHandler;
   private readonly pushHandler: IPushHandler;
   private readonly checkCommitHandler: ICheckCommitHandler;
 
   constructor(repoPath: string, authUrl: string) {
     this.repoPath = repoPath;
-    this.authUrl = authUrl;
+    // this.authUrl = authUrl;
     this.pullHandler = new PullHandler(repoPath, authUrl);
     this.pushHandler = new PushHandler(repoPath, authUrl);
     this.checkCommitHandler = new CheckCommitHandler(repoPath);
@@ -198,9 +200,11 @@ class PeriodicHandler implements IPeriodicHandler {
 class PullHandler implements IPullHandler {
   private readonly repoPath: string;
   private readonly authUrl: string;
+  private readonly mergeService: IMergeHandler; // added for merge support
   private readonly logger = new ConsoleLogger(PullHandler.name);
 
-  constructor(repoPath: string, authUrl: string) {
+  constructor(repoPath: string, authUrl: string, mergeService: IMergeHandler = new MergeHandler()) {
+    this.mergeService = mergeService; // added for merge support
     this.repoPath = repoPath;
     this.authUrl = authUrl;
   }
@@ -208,18 +212,25 @@ class PullHandler implements IPullHandler {
   public async pull(): Promise<boolean> {
     this.logger.LogMsg('Pulling latest changes…');
     try {
-      await git.pull({
-        fs,
-        http,
-        dir: this.repoPath,
-        url: this.authUrl,       // if no token, authUrl == repoUrl
-        remote: undefined,       // skip reading .git/config
-        singleBranch: true,
-        author: { name: 'AutoSync', email: 'autosync@example.com' },
-        fastForward: true,
-      });
-      this.logger.LogMsg('Pull succeeded.');
-      return true;
+      // await git.pull({
+      //   fs,
+      //   http,
+      //   dir: this.repoPath,
+      //   url: this.authUrl,       
+      //   remote: undefined,       
+      //   singleBranch: true,
+      //   author: { name: 'AutoSync', email: 'autosync@example.com' },
+      //   fastForward: true,
+      // });
+      const success = await this.mergeService.fetchAndMerge(this.repoPath, this.authUrl);
+
+      if (success) {
+        this.logger.LogMsg('Pull (fetch+merge) succeeded.');
+        return true;
+      } else {
+        this.logger.ErrorMsg('Pull (fetch+merge) failed.');
+        return false;
+      }
     } catch (err: any) {
       this.logger.ErrorMsg(`Error pulling changes: ${err.message}`);
       return false;
