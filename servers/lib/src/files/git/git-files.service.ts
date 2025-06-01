@@ -14,7 +14,7 @@ import { Project } from 'src/types.js';
 import * as git from 'isomorphic-git';
 import fs2 from 'fs/promises';
 import * as path from 'path';
-import ignore from 'ignore'; // library to parse .gitignore rules
+import ignore from 'ignore';
 import * as fs from 'fs';
 
 @Injectable()
@@ -22,34 +22,41 @@ export default class GitFilesService implements IFilesService {
   private readonly dataPath: string;
   private readonly logger = new ConsoleLogger(GitFilesService.name);
   @Inject(LocalFilesService) private localFilesService!: LocalFilesService;
-
-  constructor(@Inject(CONFIG_SERVICE) private configService: Config) {
-    this.dataPath = this.configService.getLocalPath();
-  }
-
+  constructor(@Inject(CONFIG_SERVICE) private configService: Config) { this.dataPath = this.configService.getLocalPath(); }
   private async cloneRepositories(): Promise<void> {
     const userRepoConfigs: { [key: string]: GitRepo }[] = this.configService.getGitRepos();
     const clonePromises: Promise<void>[] = [];
 
     for (const configObj of userRepoConfigs) {
       for (const userKey of Object.keys(configObj)) {
-        if (!this.isValidUserKey(userKey)) {
-          throw new Error(`Invalid userKey: ${userKey}`);
-        }
+        if (!this.isValidUserKey(userKey)) { throw new Error(`Invalid userKey: ${userKey}`); }
         const gitRepo: GitRepo = configObj[userKey];
         const repoUrl = gitRepo['repo-url'];
         const httpToken = gitRepo['http-token'];
         const clonePath = path.join(this.dataPath, userKey);
-
-        // Build the URL that includes the token (if provided)
         const authUrl = this.buildAuthUrl(repoUrl, httpToken);
+        // const alreadyCloned = fs.existsSync(path.join(clonePath, '.git'));  // <-- replaced with the next line
+        //
+        //
+        // ─────────────────────────────────────
+        // the new feature: Incompatible-config
+        // ─────────────────────────────────────
+        const gitDir = path.join(clonePath, '.git');
+        const alreadyCloned = fs.existsSync(gitDir);
 
-        // Check if the repo is already cloned by looking for the .git folder
-        const alreadyCloned = fs.existsSync(path.join(clonePath, '.git'));
+        if (alreadyCloned) {
+          const actualRemote = await this.getActualRemoteUrl(clonePath);
+          if (!actualRemote) throw new Error(`Missing origin remote in ${gitDir}`);
+          if (actualRemote !== repoUrl) {
+            this.logger.error(`Incompatible Git repo detected for userKey "${userKey}"\n` +
+              `Config repo-url: ${repoUrl}\nActual origin:   ${actualRemote}`);
+            throw new Error('Git repository mismatch – aborting.');
+          }
+          this.logger.log(`✓ Repo for "${userKey}" matches config`);
+        }
 
         const doClone = async () => {
           if (!alreadyCloned) {
-            // Clone into clonePath; this creates clonePath/.git
             await git.clone({
               fs,
               http,
@@ -62,44 +69,29 @@ export default class GitFilesService implements IFilesService {
           } else {
             this.logger.LogMsg(`Repo already exists at ${clonePath}; skipping clone.`);
           }
+          //
+          //
+          //
 
-          // Schedule periodic sync with both clonePath and authUrl
           const autoSync = new PeriodicHandler(clonePath, authUrl);
           const syncInterval = this.normalizeSyncInterval(gitRepo['sync-interval']);
           autoSync.schedulePeriodicSync(syncInterval);
           this.logger.LogMsg(`Scheduled auto-sync for ${userKey} every ${syncInterval} seconds.`);
         };
-
         clonePromises.push(doClone());
+
       }
     }
-
     await Promise.all(clonePromises);
   }
 
-  private buildAuthUrl(repoUrl: string, httpToken?: string): string {
-    // If token exists, embed it; otherwise return plain URL
-    return httpToken
-      ? `https://${httpToken}@${repoUrl.replace(/^https?:\/\//, '')}`
-      : repoUrl;
-  }
+  private buildAuthUrl(repoUrl: string, httpToken?: string): string { return httpToken ? `https://${httpToken}@${repoUrl.replace(/^https?:\/\//, '')}` : repoUrl; }
 
-  init(): Promise<void> {
-    return this.cloneRepositories();
-  }
-  getMode(): CONFIG_MODE {
-    return CONFIG_MODE.GIT;
-  }
-  listDirectory(p: string): Promise<Project> {
-    return this.localFilesService.listDirectory(p);
-  }
-  readFile(p: string): Promise<Project> {
-    return this.localFilesService.readFile(p);
-  }
-  private isValidUserKey(key: string): boolean {
-    // Only alphanumeric, underscore or dash allowed
-    return /^[A-Za-z0-9_-]+$/.test(key);
-  }
+  listDirectory(p: string): Promise<Project> { return this.localFilesService.listDirectory(p); }
+  readFile(p: string): Promise<Project> { return this.localFilesService.readFile(p); }
+  init(): Promise<void> { return this.cloneRepositories(); }
+  getMode(): CONFIG_MODE { return CONFIG_MODE.GIT; }
+  private isValidUserKey(key: string): boolean { return /^[A-Za-z0-9_-]+$/.test(key); }
   private normalizeSyncInterval(value: unknown, fallback = 60): number {
     if (typeof value === 'number') return value;
     if (typeof value === 'string') {
@@ -108,20 +100,28 @@ export default class GitFilesService implements IFilesService {
     }
     return fallback;
   }
+  //
+  //
+  //
+  /**────────────────────────────────────────────────────────────────
+    *           the new feature: Incompatible-config
+    *────────────────────────────────────────────────────────────────*/
+  private async getActualRemoteUrl(repoPath: string): Promise<string | null> {
+    const remotes = await git.listRemotes({ fs, dir: repoPath });
+    const origin = remotes.find(r => r.remote === 'origin');
+    return origin?.url ?? null;
+  }
+
 }
 
-export interface ICheckCommitHandler {
-  checkOrCommit(): Promise<boolean>;
-}
-export interface IPullHandler {
-  pull(): Promise<boolean>;
-}
-export interface IPushHandler {
-  push(): Promise<boolean>;
-}
-export interface IPeriodicHandler {
-  schedulePeriodicSync(intervalSeconds: number): void;
-}
+
+
+
+
+export interface ICheckCommitHandler { checkOrCommit(): Promise<boolean>; }
+export interface IPeriodicHandler { schedulePeriodicSync(intervalSeconds: number): void; }
+export interface IPullHandler { pull(): Promise<boolean>; }
+export interface IPushHandler { push(): Promise<boolean>; }
 
 class PeriodicHandler implements IPeriodicHandler {
   private readonly logger = new ConsoleLogger(PeriodicHandler.name);
