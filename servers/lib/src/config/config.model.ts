@@ -11,4 +11,5 @@
 export interface GitRepo {
   'repo-url': string;
   'http-token'?: string;
+  // 'sshKeyPath'?: string;
 }

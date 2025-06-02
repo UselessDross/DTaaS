@@ -17,6 +17,7 @@ import * as path from 'path';
 import ignore from 'ignore';
 import * as fs from 'fs';
 
+
 @Injectable()
 export default class GitFilesService implements IFilesService {
   private readonly dataPath: string;
@@ -34,13 +35,10 @@ export default class GitFilesService implements IFilesService {
         const repoUrl = gitRepo['repo-url'];
         const httpToken = gitRepo['http-token'];
         const clonePath = path.join(this.dataPath, userKey);
-        const authUrl = this.buildAuthUrl(repoUrl, httpToken);
-        // const alreadyCloned = fs.existsSync(path.join(clonePath, '.git'));  // <-- replaced with the next line
-        //
-        //
-        // ─────────────────────────────────────
-        // the new feature: Incompatible-config
-        // ─────────────────────────────────────
+        const authUrl = this.buildAuthUrl(repoUrl, httpToken); // <-- replaced with SSH handling
+        // const authUrl = this.isSSH(repoUrl) ? repoUrl : this.buildAuthUrl(repoUrl, httpToken);
+
+
         const gitDir = path.join(clonePath, '.git');
         const alreadyCloned = fs.existsSync(gitDir);
 
@@ -48,8 +46,7 @@ export default class GitFilesService implements IFilesService {
           const actualRemote = await this.getActualRemoteUrl(clonePath);
           if (!actualRemote) throw new Error(`Missing origin remote in ${gitDir}`);
           if (actualRemote !== repoUrl) {
-            this.logger.error(`Incompatible Git repo detected for userKey "${userKey}"\n` +
-              `Config repo-url: ${repoUrl}\nActual origin:   ${actualRemote}`);
+            this.logger.error(`Incompatible Git repo detected for userKey "${userKey}"\n` + `Config repo-url: ${repoUrl}\nActual origin:   ${actualRemote}`);
             throw new Error('Git repository mismatch – aborting.');
           }
           this.logger.log(`✓ Repo for "${userKey}" matches config`);
@@ -66,13 +63,7 @@ export default class GitFilesService implements IFilesService {
               depth: 1,
             });
             this.logger.LogMsg(`Cloned ${repoUrl} into ${clonePath}`);
-          } else {
-            this.logger.LogMsg(`Repo already exists at ${clonePath}; skipping clone.`);
-          }
-          //
-          //
-          //
-
+          } else { this.logger.LogMsg(`Repo already exists at ${clonePath}; skipping clone.`); }
           const autoSync = new PeriodicHandler(clonePath, authUrl);
           const syncInterval = this.normalizeSyncInterval(gitRepo['sync-interval']);
           autoSync.schedulePeriodicSync(syncInterval);
@@ -91,6 +82,7 @@ export default class GitFilesService implements IFilesService {
   readFile(p: string): Promise<Project> { return this.localFilesService.readFile(p); }
   init(): Promise<void> { return this.cloneRepositories(); }
   getMode(): CONFIG_MODE { return CONFIG_MODE.GIT; }
+
   private isValidUserKey(key: string): boolean { return /^[A-Za-z0-9_-]+$/.test(key); }
   private normalizeSyncInterval(value: unknown, fallback = 60): number {
     if (typeof value === 'number') return value;
@@ -100,12 +92,7 @@ export default class GitFilesService implements IFilesService {
     }
     return fallback;
   }
-  //
-  //
-  //
-  /**────────────────────────────────────────────────────────────────
-    *           the new feature: Incompatible-config
-    *────────────────────────────────────────────────────────────────*/
+
   private async getActualRemoteUrl(repoPath: string): Promise<string | null> {
     const remotes = await git.listRemotes({ fs, dir: repoPath });
     const origin = remotes.find(r => r.remote === 'origin');
@@ -126,14 +113,12 @@ export interface IPushHandler { push(): Promise<boolean>; }
 class PeriodicHandler implements IPeriodicHandler {
   private readonly logger = new ConsoleLogger(PeriodicHandler.name);
   private readonly repoPath: string;
-  // private readonly authUrl: string;
   private readonly pullHandler: IPullHandler;
   private readonly pushHandler: IPushHandler;
   private readonly checkCommitHandler: ICheckCommitHandler;
 
   constructor(repoPath: string, authUrl: string) {
     this.repoPath = repoPath;
-    // this.authUrl = authUrl;
     this.pullHandler = new PullHandler(repoPath, authUrl);
     this.pushHandler = new PushHandler(repoPath, authUrl);
     this.checkCommitHandler = new CheckCommitHandler(repoPath);
@@ -167,14 +152,12 @@ class PeriodicHandler implements IPeriodicHandler {
       this.logger.LogMsg('--- Starting periodic sync cycle ---');
 
       try {
-        // Step 1: Pull
         const pulled = await this.callPull();
         if (!pulled) {
           this.logger.ErrorMsg('Pull failed; skipping commit and push.');
           return;
         }
 
-        // Step 2: Check and commit
         const committed = await this.callCheckCommit();
         if (!committed) {
           this.logger.ErrorMsg('Check/Commit failed; skipping push.');
@@ -182,7 +165,6 @@ class PeriodicHandler implements IPeriodicHandler {
         }
         this.logger.LogMsg('Check/Commit step completed.');
 
-        // Step 3: Push
         await this.callPush();
         this.logger.LogMsg('Push step completed.');
       } catch (err: any) {
@@ -212,16 +194,6 @@ class PullHandler implements IPullHandler {
   public async pull(): Promise<boolean> {
     this.logger.LogMsg('Pulling latest changes…');
     try {
-      // await git.pull({
-      //   fs,
-      //   http,
-      //   dir: this.repoPath,
-      //   url: this.authUrl,       
-      //   remote: undefined,       
-      //   singleBranch: true,
-      //   author: { name: 'AutoSync', email: 'autosync@example.com' },
-      //   fastForward: true,
-      // });
       const success = await this.mergeService.fetchAndMerge(this.repoPath, this.authUrl);
 
       if (success) {

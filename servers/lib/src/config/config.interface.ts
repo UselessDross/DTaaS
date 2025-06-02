@@ -12,4 +12,12 @@ export interface IConfig {
   getGraphqlPlayground(): string;
   getGitRepos(): { [key: string]: GitRepo }[];
 
+  // Secrets management methods
+
+  loadSecrets(password: string): Promise<void>; //added
+  saveSecrets(password: string): Promise<void>; //added
+  getSecret(key: string): string | undefined; //added
+  setSecret(key: string, value: string): void; //added
+
+
 }
