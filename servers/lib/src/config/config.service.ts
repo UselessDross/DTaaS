@@ -24,7 +24,7 @@ export default class Config implements IConfig {
   //
   //
   constructor() { this.logger = new Logger(Config.name); }
-  async loadSecrets(password: string): Promise<void> {
+  async loadSecrets(): Promise<void> {
     if (!existsSync(this.secretsFilePath)) {
       this.logger.warn(`Secrets file not found at ${this.secretsFilePath}`);
       this.secrets = {};
@@ -33,7 +33,6 @@ export default class Config implements IConfig {
     try {
       const encrypted = readFileSync(this.secretsFilePath);
       const decryptedJson = await decrypt(encrypted);
-
       this.secrets = JSON.parse(decryptedJson);
       this.logger.log('Secrets loaded and decrypted');
     } catch (e) {
@@ -41,11 +40,11 @@ export default class Config implements IConfig {
       throw e;
     }
   }
-  async saveSecrets(password: string): Promise<void> {
+  async saveSecrets(): Promise<void> {
     try {
       const jsonString = JSON.stringify(this.secrets);
-      const encrypted = encrypt(jsonString);
-      writeFileSync(this.secretsFilePath, await encrypted, 'utf8');
+      const encryptedBuffer = await encrypt(jsonString);
+      writeFileSync(this.secretsFilePath, encryptedBuffer);  // no 'utf8'—because this is raw bytes
       this.logger.log('Secrets encrypted and saved');
     } catch (e) {
       this.logger.error('Failed to save secrets', e);

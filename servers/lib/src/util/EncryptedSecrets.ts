@@ -1,5 +1,4 @@
-// src/utils/EncryptedSecrets.ts
-
+// src/util/EncryptedSecrets.ts
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 
@@ -7,14 +6,16 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // 96-bit IV
 const TAG_LENGTH = 16; // 128-bit GCM tag
 
-const SECRET_KEY = process.env.SECRET_KEY;
-if (!SECRET_KEY || SECRET_KEY.length !== 64) { throw new Error('SECRET_KEY must be a 64-character hex string (32 bytes)'); }
+function getKey(): Buffer {
+    const SECRET_KEY = process.env.SECRET_KEY;
+    if (!SECRET_KEY || SECRET_KEY.length !== 64) { throw new Error('SECRET_KEY must be a 64-character hex string (32 bytes)'); }
+    return Buffer.from(SECRET_KEY, 'hex');
 
-function getKey(): Buffer { return Buffer.from(SECRET_KEY!, 'hex'); }
+}
 
 export async function encrypt(text: string): Promise<Buffer> {
     const iv = crypto.randomBytes(IV_LENGTH);
-    const key = getKey();
+    const key = getKey(); // <-- validate here
 
     const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
     const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
@@ -28,7 +29,7 @@ export async function decrypt(encrypted: Buffer): Promise<string> {
     const tag = encrypted.slice(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
     const data = encrypted.slice(IV_LENGTH + TAG_LENGTH);
 
-    const key = getKey();
+    const key = getKey(); // <-- validate here
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
     decipher.setAuthTag(tag);
 

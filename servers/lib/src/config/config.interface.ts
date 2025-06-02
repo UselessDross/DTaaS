@@ -14,8 +14,8 @@ export interface IConfig {
 
   // Secrets management methods
 
-  loadSecrets(password: string): Promise<void>; //added
-  saveSecrets(password: string): Promise<void>; //added
+  loadSecrets(): Promise<void>; //added
+  saveSecrets(): Promise<void>; //added
   getSecret(key: string): string | undefined; //added
   setSecret(key: string, value: string): void; //added
 

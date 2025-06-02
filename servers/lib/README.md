@@ -512,3 +512,269 @@ Each auto-generated commit appears similar to the example below:
 ```
 
 This integration helps ensure your local repository remains synchronized with the remote source automatically.
+
+## aggregated featurs:
+
+there are no real one way to test each feature indivdiually.
+that said, if you run the follwoing:
+
+```powershell
+$env:SECRET_KEY = "5fe402f4f0ae2f23d31a88a4e1f17d6ad7ab3c84f56df89d9fc5a90a47c63f2e"
+$env:SECRETS_PASSWORD = "mySuperSecretPassword123!"
+yarn start -- -H ./config/http.json
+```
+
+you should see:
+
+```bash
+[Config] Secrets loaded and decrypted
+[bootstrap] √ Secrets loaded successfully
+```
+
+Below is a short guide that walks through all the “end-to-end” steps—setting environment variables, starting the service, and verifying that each feature is behaving as expected. Feel free to copy/paste or adapt it into a `README.md` or internal wiki page.
+
+---
+
+## Running and Testing the New LibMS Features
+
+This document assumes you have:
+
+- A working Node ≥ 18 / npm or Yarn environment.
+- A valid Git repository layout under your `files/` directory (the “working copies” of each user repo).
+- Already generated (or placeholder) values for:
+
+  - `SECRET_KEY` (a 64-character hex string)
+  - `SECRETS_PASSWORD` (a passphrase used to lock/unlock `secrets.enc`)
+
+The two main “feature blocks” that we want to verify are:
+
+1. **Encrypted-Secrets (“Store Tokens as Secrets”)**
+2. **Git-Auto-Sync (“Merge-ours” & periodic pull/commit/push + Incompatible-Config check + SSH support)**
+
+Below are step-by-step instructions for:
+
+1. Setting up your environment variables.
+2. Starting the service.
+3. Verifying each sub-feature (Secrets, Incompatible-Config, Merge-ours, SSH, periodic sync).
+
+---
+
+### 1. Environment Setup
+
+Before you run anything, open a terminal (PowerShell on Windows or a bash-compatible shell on macOS/Linux) and export two environment variables:
+
+1. **`SECRET_KEY`**
+
+   - Must be exactly 64 hex characters (32 bytes).
+   - Used to encrypt/decrypt the on-disk `secrets.enc` file.
+   - Example (dummy value):
+
+     ```powershell
+     $env:SECRET_KEY = "5fe402f4f0ae2f23d31a88a4e1f17d6ad7ab3c84f56df89d9fc5a90a47c63f2e"
+     ```
+
+   - If you see the error
+
+     ```
+     Error: SECRET_KEY must be a 64-character hex string (32 bytes)
+     ```
+
+     that means your `SECRET_KEY` is missing or invalid.
+
+2. **`SECRETS_PASSWORD`**
+
+   - A “master passphrase” you choose—used to unlock the encrypted file.
+   - Can be any string (e.g. `mySuperSecretPassword123!`).
+   - Example:
+
+     ```powershell
+     $env:SECRETS_PASSWORD = "mySuperSecretPassword123!"
+     ```
+
+Once both are set, the process will:
+
+- Check for an existing `secrets.enc` at project root (e.g. `servers/lib/secrets.enc`).
+- If missing, create a brand-new (encrypted) file containing any Git tokens you add.
+- If present, decrypt it using the above env vars.
+
+---
+
+### 2. Starting the Service
+
+Assuming you’re in the project’s root directory (`…/DTaaS/servers/lib`), run:
+
+```bash
+yarn start -- -H ./config/http.json
+```
+
+or, if you prefer npm:
+
+```bash
+npm run start -- -H ./config/http.json
+```
+
+You should see output similar to this:
+
+```text
+[Nest] …  - … LOG [NestFactory] Starting Nest application…
+  MSG   - … [Config] Secrets loaded and decrypted
+  MSG   - … [bootstrap] √ Secrets loaded successfully
+  MSG   - … [Config] Config loaded
+  MSG   - … [Config] Object:
+    { "port": "4001", "mode": "git", "local-path": "...", … }
+  MSG   - … [bootstrap] √ Config file parsed successfully
+  MSG   - … [bootstrap] Starting libms in git mode, serving files from … on port 4001
+  MSG   - … [GitFilesService] ✓ Repo for "user1" matches config
+  MSG   - … “Repo already exists at …\files\user1; skipping clone.”
+  MSG   - … “Scheduled auto-sync for user1 every 15 seconds.”
+  MSG   - … (same for user2, common, etc.)
+  MSG   - … “--- Starting periodic sync cycle ---”
+  MSG   - … “╸calling pull…”
+  MSG   - … “Pulling latest changes…”
+  MSG   - … “On branch: main”
+  MSG   - … “Fetching…”
+  MSG   - … “Merge (ours) completed on "main".”
+  MSG   - … “Pull (fetch+merge) succeeded.”
+  MSG   - … “╸calling checkOrCommit…”
+  MSG   - … “No changes detected; nothing to commit.”
+  MSG   - … “╸calling push…”
+  MSG   - … “No HTTP token provided; skipping push for public repo.”
+  MSG   - … “--- Periodic sync cycle completed ---”
+```
+
+**If you see exactly that sequence, it means:**
+
+- Your `SECRET_KEY` and `SECRETS_PASSWORD` worked to decrypt (or create) `secrets.enc`.
+- `bootstrap.ts` loaded the “libms.yaml” config successfully.
+- Each Git repo in `files/<userKey>` matched the URL in `libms.yaml`.
+- The “ours” merge strategy was used on `git pull`.
+- No local changes → no commit.
+- For public repos, push is skipped (because no token was set in secrets).
+- The cycle repeats on the configured sync interval.
+
+---
+
+### 3. Verifying Encrypted-Secrets
+
+1. **First Run (no `secrets.enc` present)**
+
+   - You will see:
+
+     ```
+     [Config] Secrets loaded and decrypted
+     [bootstrap] √ Secrets loaded successfully
+     [Config] Secrets encrypted and saved
+     [bootstrap] Set and saved new githubToken secret
+     ```
+
+   - A file named `secrets.enc` will appear in your project root (e.g. `servers/lib/secrets.enc`).
+
+2. **Inspect `secrets.enc`**
+
+   - Open it with a hex editor or run `xxd secrets.enc` (Linux/macOS).
+   - You should **not** see `"my-new-token"` in plaintext—only gibberish binary.
+
+3. **Second Run (with `secrets.enc` present, same ENV vars)**
+
+   - Stop the server (`Ctrl+C`).
+   - Re-run `yarn start …` (ensuring `SECRET_KEY` + `SECRETS_PASSWORD` are set).
+   - You will see no “Set and saved new githubToken” message on stage 6—because `githubToken` was already populated in the previously written `secrets.enc`.
+   - Instead, you’ll see only:
+
+     ```
+     [Config] Secrets loaded and decrypted
+     [bootstrap] √ Secrets loaded successfully
+     ```
+
+   - That proves `loadSecrets()` read back the same encrypted data.
+
+4. **Modify `githubToken` to test “save”**
+
+   - Manually open the decrypted JSON (in code or by adding a temporary `console.log(configService.getSecret('githubToken'))`).
+   - Change it to something else (e.g. `configService.setSecret('githubToken', 'anotherValue')`) and call `saveSecrets()` again.
+   - Restart and verify `getSecret('githubToken')` reflects the new value.
+
+---
+
+### 4. Verifying Incompatible-Config
+
+> This feature ensures that if a user’s folder under `files/<userKey>` was originally cloned from a different remote URL than what’s in `libms.yaml`, the service will throw an error and exit.
+
+1. **Original (matching) config**
+
+   - If `files/user1/.git/config → [remote "origin"].url` equals `repo-url: "https://gitlab.com/dtaas/user1.git"` in `libms.yaml`, you will see:
+
+     ```
+     [GitFilesService] ✓ Repo for "user1" matches config
+     ```
+
+2. **Test a mismatch**
+
+   - Navigate to one of your existing clones, e.g. `cd files/user2`.
+   - Run:
+
+     ```bash
+     git remote set-url origin https://github.com/someone-else/other-repo.git
+     ```
+
+   - Then restart the service (`yarn start …`).
+   - You should see an error like:
+
+     ```
+     [GitFilesService] X Incompatible Git repo detected for userKey "user2"
+       Config repo-url: https://gitlab.com/dtaas/user2.git
+       Actual origin:   https://github.com/someone-else/other-repo.git
+     Error: Git repository mismatch – aborting.
+     ```
+
+   - The process will exit (because we threw an exception). This prevents you from continuing until the folder’s origin matches the YAML.
+
+3. **Restore the correct origin**
+
+   - In `files/user2/`, run:
+
+     ```bash
+     git remote set-url origin https://gitlab.com/dtaas/user2.git
+     ```
+
+   - Now restarting the service should succeed again.
+
+---
+
+### 5. Verifying “Merge-Ours” Conflict Resolution
+
+When you run `git pull` via Isomorphic-Git’s `fetch + merge` calls, the code chooses “ours” (keep the local version) automatically on conflict. To test:
+
+1. In one of your repo folders (e.g. `files/user2`), create or modify a file on the `main` branch:
+
+   ```bash
+   cd files/user2
+   echo "Local change" >> conflict.txt
+   git add conflict.txt
+   git commit -m "Local change – test conflict"
+   ```
+
+2. Meanwhile, push an unrelated change upstream (e.g. via the GitLab web UI). For example, edit the same `conflict.txt` on GitLab so that it conflicts with your local change.
+3. Wait for the next sync tick (10 seconds). The logs should show:
+
+   ```
+   ── Starting periodic sync cycle ──
+   ╸calling pull…
+   Pulling latest changes…
+   On branch: main
+   Fetching…
+   Merge (ours) completed on "main".
+   Pull (fetch+merge) succeeded.
+   ╸calling checkOrCommit…
+   ✏️ Changes to commit: conflict.txt
+   • git.add conflict.txt
+   • git.commit — message: "Auto commit at 2025-06-02T…"
+   ✔ Committed 1 file(s).
+   ╸calling push…
+   Push succeeded.
+   ── Periodic sync cycle completed ──
+   ```
+
+   Even though a true “merge conflict” existed, the “ours” strategy kept your local version of `conflict.txt` and created a merge commit. (You can confirm in `files/user2/conflict.txt` that your local content was preserved.)
+
+---

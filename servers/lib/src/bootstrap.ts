@@ -46,7 +46,7 @@ export default async function bootstrap(options?: BootstrapOptions) {
   // Stage 5: decrypte/load any exisitng secrets files 
   //          ──────────────────────────────────────────────────────
   try {
-    await configService.loadSecrets(process.env.SECRETS_PASSWORD!);
+    await configService.loadSecrets();
     logger.log('√ Secrets loaded successfully');
   } catch (err: any) {
     logger.error('X Failed to load/decrypt secrets:', err.message);
@@ -61,7 +61,7 @@ export default async function bootstrap(options?: BootstrapOptions) {
   let token = configService.getSecret('githubToken');
   if (!token) {
     configService.setSecret('githubToken', 'my-new-token');
-    await configService.saveSecrets(password);
+    await configService.saveSecrets();
     logger.log('Set and saved new githubToken secret');
   }
   //
