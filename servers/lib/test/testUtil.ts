@@ -76,6 +76,10 @@ export const jestMockConfigService = (): IConfig => ({
   getLogLevel: jest.fn<() => string>(),
   getPort: jest.fn<() => number>(),
   loadConfig: jest.fn<() => Promise<void>>(),
+  loadSecrets: jest.fn<() => Promise<void>>(),
+  saveSecrets: jest.fn<() => Promise<void>>(),
+  getSecret: jest.fn<() => string>(),
+  setSecret: jest.fn<() => void>(),
 });
 
 export const mockReadFileResponseData = {
