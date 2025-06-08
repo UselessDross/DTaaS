@@ -21,9 +21,14 @@ import * as fs from 'fs';
 @Injectable()
 export default class GitFilesService implements IFilesService {
   private readonly dataPath: string;
+  private readonly gitDirRoot: string;
   private readonly logger = new ConsoleLogger(GitFilesService.name);
   @Inject(LocalFilesService) private localFilesService!: LocalFilesService;
-  constructor(@Inject(CONFIG_SERVICE) private configService: Config) { this.dataPath = this.configService.getLocalPath(); }
+  constructor(@Inject(CONFIG_SERVICE) private configService: Config) {
+    this.dataPath = this.configService.getLocalPath();
+    this.gitDirRoot = path.join(this.dataPath, 'gitdir');
+
+  }
   private async cloneRepositories(): Promise<void> {
     const userRepoConfigs: { [key: string]: GitRepo }[] = this.configService.getGitRepos();
     const clonePromises: Promise<void>[] = [];
@@ -39,31 +44,45 @@ export default class GitFilesService implements IFilesService {
         // const authUrl = this.isSSH(repoUrl) ? repoUrl : this.buildAuthUrl(repoUrl, httpToken);
 
 
-        const gitDir = path.join(clonePath, '.git');
-        const alreadyCloned = fs.existsSync(gitDir);
+        // const gitDir = path.join(clonePath, '.git');
+        const gitDir = path.join(this.gitDirRoot, userKey);
+        // Only count it as cloned if HEAD exists in the gitdir
+        const headFile = path.join(gitDir, 'HEAD');
+        const alreadyCloned = fs.existsSync(headFile);
 
         if (alreadyCloned) {
-          const actualRemote = await this.getActualRemoteUrl(clonePath);
-          if (!actualRemote) throw new Error(`Missing origin remote in ${gitDir}`);
+          const actualRemote = await this.getActualRemoteUrl(clonePath, gitDir);
+          if (!actualRemote) {
+            throw new Error(`Missing origin remote in ${gitDir}`);
+          }
           if (actualRemote !== repoUrl) {
-            this.logger.error(`Incompatible Git repo detected for userKey "${userKey}"\n` + `Config repo-url: ${repoUrl}\nActual origin:   ${actualRemote}`);
+            this.logger.error(
+              `Incompatible Git repo for "${userKey}"\n` +
+              `Config repo-url: ${repoUrl}\n` +
+              `Actual origin:   ${actualRemote}`
+            );
             throw new Error('Git repository mismatch – aborting.');
           }
           this.logger.log(`✓ Repo for "${userKey}" matches config`);
         }
+
 
         const doClone = async () => {
           if (!alreadyCloned) {
             await git.clone({
               fs,
               http,
-              dir: clonePath,
+              dir: clonePath,  // working tree
+              gitdir: gitDir,  // separate git metadata
               url: authUrl,
               singleBranch: true,
               depth: 1,
             });
             this.logger.LogMsg(`Cloned ${repoUrl} into ${clonePath}`);
-          } else { this.logger.LogMsg(`Repo already exists at ${clonePath}; skipping clone.`); }
+          } else {
+            this.logger.LogMsg(`Repo already exists with gitdir at ${gitDir}; skipping clone.`);
+
+          }
           const autoSync = new PeriodicHandler(clonePath, authUrl);
           const syncInterval = this.normalizeSyncInterval(gitRepo['sync-interval']);
           autoSync.schedulePeriodicSync(syncInterval);
@@ -93,11 +112,20 @@ export default class GitFilesService implements IFilesService {
     return fallback;
   }
 
-  private async getActualRemoteUrl(repoPath: string): Promise<string | null> {
-    const remotes = await git.listRemotes({ fs, dir: repoPath });
+  private async getActualRemoteUrl(
+    workingTreePath: string,
+    gitDir: string
+  ): Promise<string | null> {
+    const remotes = await git.listRemotes({
+      fs,
+      dir: workingTreePath,
+      gitdir: gitDir
+    });
     const origin = remotes.find(r => r.remote === 'origin');
     return origin?.url ?? null;
   }
+
+
 
 }
 
@@ -194,7 +222,7 @@ class PullHandler implements IPullHandler {
   public async pull(): Promise<boolean> {
     this.logger.LogMsg('Pulling latest changes…');
     try {
-      const success = await this.mergeService.fetchAndMerge(this.repoPath, this.authUrl);
+      const success = await this.mergeService.fetchAndMerge(this.repoPath, path.join(this.repoPath, '.git'), this.authUrl);
 
       if (success) {
         this.logger.LogMsg('Pull (fetch+merge) succeeded.');
