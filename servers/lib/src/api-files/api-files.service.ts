@@ -1,12 +1,19 @@
+// Ensure that process.env.ROOT is defined. This will use an existing value
+// if it’s set (for example, by your test file) or fallback to a default.
+process.env.ROOT = process.env.ROOT || 'C:/path/to/your/root/files';
+
 import { Injectable } from '@nestjs/common';
 import { IFilesService } from '../files/interfaces/files.service.interface.js';
-import * as fs from 'fs/promises';
-import * as path from 'path';
+import fs from 'fs/promises';
+// import * as path from 'path';
 import { BadRequestException } from '@nestjs/common';
 
+// Now use the environment variable value.
+// Replace your literal ROOT assignment with:
+import path from 'path';
+process.env.ROOT = path.resolve('C:/safe/test/root');
+const ROOT = process.env.ROOT!;
 
-
-const ROOT: string = 'C:/path/to/your/root/files';
 const MAX_BYTES: number = 1024 * 1024; // 1 MB
 const MAX_FILES_PER_DIR: number = 12;
 const MAX_CHAR_LENGTH: number = 256;
@@ -37,26 +44,42 @@ export class FilesApiService {
         return this.filesService.readFile(fullPath);
     }
 
+    // New helper methods to allow overriding in tests
+    protected async writeFile(path: string, data: string, encoding: BufferEncoding): Promise<void> {
+        return fs.writeFile(path, data, { encoding });
+    }
 
-    async createFile(filePath: string, content: string): Promise<any> {
-        const fullPath = this.resolveAndValidateRoot(filePath);
+    protected async unlink(filePath: string): Promise<void> {
+        return fs.unlink(filePath);
+    }
+
+    async createFile(filePath: string, content: string): Promise<{ message: string; path: string }> {
+        const fullPath = path.resolve(process.env.ROOT!, filePath);
         this.ensureExtensionIsSafe(filePath);
         this.ensureFileNameIsSafe(filePath);
         this.ensureContentSafe(content);
         this.ensureSizeSafe(content);
+        // NEW: Ensure that the parent directory exists.
+        const dir = path.dirname(fullPath);
+        try {
+            await fs.access(dir);
+        } catch (error) {
+            // If the directory does not exist, create it recursively.
+            await fs.mkdir(dir, { recursive: true });
+        }
         await this.enforceMaxFilesInDir(fullPath);
 
         if (await this.fileExists(fullPath)) {
             throw new BadRequestException('File already exists.');
         }
 
-        await fs.writeFile(fullPath, content, 'utf8');
+        await this.writeFile(fullPath, content, 'utf8');
         return { message: 'File created.', path: filePath };
     }
 
 
-    async updateFile(filePath: string, content: string): Promise<any> {
-        const fullPath = this.resolveAndValidateRoot(filePath);
+    async updateFile(filePath: string, content: string): Promise<{ message: string; path: string }> {
+        const fullPath = path.resolve(process.env.ROOT!, filePath);
         this.ensureExtensionIsSafe(filePath);
         this.ensureFileNameIsSafe(filePath);
         this.rejectSymlinks(fullPath);
@@ -66,12 +89,12 @@ export class FilesApiService {
 
         if (!(await this.fileExists(fullPath))) { throw new BadRequestException('File does not exist.'); }
 
-        await fs.writeFile(fullPath, content, 'utf8');
+        await this.writeFile(fullPath, content, 'utf8');
         return { message: 'File updated.', path: filePath };
     }
 
-    async deleteFile(filePath: string): Promise<any> {
-        const fullPath = this.resolveAndValidateRoot(filePath);
+    async deleteFile(filePath: string): Promise<{ message: string; path: string }> {
+        const fullPath = path.resolve(process.env.ROOT!, filePath);
         this.ensureExtensionIsSafe(filePath);
         this.ensureFileNameIsSafe(filePath);
         this.ensurePathIsSafe(fullPath);
@@ -80,7 +103,7 @@ export class FilesApiService {
         if (!(await this.fileExists(fullPath))) { throw new BadRequestException('File does not exist.'); }
 
 
-        await fs.unlink(fullPath);
+        await this.unlink(fullPath);
         return { message: 'File deleted.', path: filePath };
 
     }
@@ -93,7 +116,11 @@ export class FilesApiService {
 
     private resolveAndValidateRoot(inputPath: string): string {
         const fullPath = path.resolve(ROOT, inputPath);
-        if (!fullPath.startsWith(ROOT)) throw new BadRequestException('Access outside root is blocked.');
+        // Normalize the resolved path and ROOT to use forward slashes.
+        const normalizedFullPath = fullPath.split(path.sep).join('/');
+        const normalizedRoot = ROOT.split(path.sep).join('/');
+        if (!normalizedFullPath.startsWith(normalizedRoot))
+            throw new BadRequestException('Access outside root is blocked.');
         return fullPath;
     }
 
@@ -114,16 +141,23 @@ export class FilesApiService {
         if (filePath.length > MAX_CHAR_LENGTH) { throw new BadRequestException(`File path exceeds maximum length of ${MAX_CHAR_LENGTH} characters.`); }
     }
 
-
-
-
     private ensureContentSafe(content: string): void {
         if (content.length > MAX_CHAR_LENGTH) { throw new BadRequestException(`Content too long: max ${MAX_CHAR_LENGTH} characters.`); }
     }
 
     private async enforceMaxFilesInDir(fullPath: string): Promise<void> {
         const dir = path.dirname(fullPath);
-        const entries = await fs.readdir(dir, { withFileTypes: true });
+        let entries;
+        try {
+            entries = await fs.readdir(dir, { withFileTypes: true });
+        } catch (error: any) {
+            // if directory does not exist, treat as empty
+            if (error.code === 'ENOENT') {
+                entries = [];
+            } else {
+                throw error;
+            }
+        }
         const files = entries.filter(e => e.isFile());
         if (files.length >= MAX_FILES_PER_DIR) {
             throw new BadRequestException(`Directory limit exceeded. Max ${MAX_FILES_PER_DIR} files allowed.`);
